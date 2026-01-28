@@ -1,0 +1,19 @@
+{                                                                                                                                                                   
+    "name": "app-marketplace",                                                                                                                                            
+    "owner": {                                                                                                                                                        
+      "name": "Francis"                                                                                                                                                 
+    },                                                                                                                                                                
+    "metadata": {                                                                                                                                                     
+      "description": "Mobile development tools by"                                                                                                              
+    },                                                                                                                                                                
+    "plugins": [                                                                                                                                                      
+      {                                                                                                                                                               
+        "name": "store-deploy-skills",                                                                                                                                       
+        "source": {                                                                                                                                                   
+          "source": "github",                                                                                                                                         
+          "repo": "frpaf/store-deploy-skills"                                                                                                                         
+        },                                                                                                                                                            
+        "description": "Mobile app deployment skills for iOS and Android"                                                                                             
+      }                                                                                                                                                               
+    ]                                                                                                                                                                 
+}
