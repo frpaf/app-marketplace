@@ -14,6 +14,13 @@
           "repo": "frpaf/store-deploy-skills"                                                                                                                         
         },                                                                                                                                                            
         "description": "Mobile app deployment skills for iOS and Android"                                                                                             
-      }                                                                                                                                                               
+      },{
+      "name": "app-store-precheck",
+      "source": {
+        "source": "github",
+        "repo": "frpaf/app-store-precheck"
+      },
+      "description": "Pre-submission validation for App Store and Google Play - catches common rejection issues"
+    }                                                                                                                                                               
     ]                                                                                                                                                                 
 }
