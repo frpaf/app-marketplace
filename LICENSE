@@ -1,0 +1,103 @@
+# App Store Pre-Check Plugin
+
+A Claude plugin that validates Flutter/mobile apps against Apple App Store and Google Play Store requirements before submission.
+
+## Features
+
+- **Automated scanning** of `Info.plist`, `build.gradle`, and source code
+- **Catches common rejection reasons** from real-world experience
+- **Generates manual checklist** for items requiring human verification
+- **Supports Flutter** (with extensibility for React Native/Expo)
+
+## Checks Performed
+
+### iOS (Info.plist)
+| Check | Guideline |
+|-------|-----------|
+| UIBackgroundModes audit | 2.5.4 |
+| Privacy purpose strings validation | 5.1.1 |
+| App Transport Security | - |
+| Required permission keys | 5.1.1 |
+
+### iOS (App Features)
+| Check | Guideline |
+|-------|-----------|
+| Account deletion requirement | 5.1.1(v) |
+| Restore Purchases for IAP | 3.1.1 |
+| Privacy Policy accessibility | 5.1.1 |
+
+### Android
+| Check | Requirement |
+|-------|-------------|
+| Target SDK level | API 35 (new apps) |
+| Signing configuration | Play App Signing |
+| Build format | AAB required |
+
+### Code Analysis
+- Login/account creation detection
+- Account deletion implementation
+- In-app purchase packages
+- Restore purchases functionality
+
+## Installation
+
+Add to your Claude plugin marketplace or use standalone:
+
+```bash
+git clone https://github.com/frpaf/app-store-precheck.git
+```
+
+## Usage
+
+### Via Claude
+
+Ask Claude to:
+- "Pre-check my app before submission"
+- "Validate my Flutter app for App Store"
+- "Check for Play Store compliance issues"
+
+### Standalone Script
+
+```bash
+cd /path/to/your/flutter/project
+bash skills/precheck/scripts/precheck.sh
+```
+
+## Output
+
+The plugin generates a report with:
+- ❌ **Blockers**: Issues that will definitely cause rejection
+- ⚠️ **Warnings**: Issues that may cause rejection
+- ✅ **Passed**: Checks that passed validation
+- 📋 **Manual Checklist**: Items requiring human verification
+
+## Based On
+
+This plugin was created from lessons learned during real App Store reviews, including issues like:
+
+1. UIBackgroundModes "audio" rejection (not valid for notification sounds)
+2. Generic camera purpose string rejection
+3. Backend API downtime during review
+4. Android signing configuration issues
+5. Missing account deletion with login present
+6. Missing Restore Purchases with IAP present
+
+## Structure
+
+```
+app-store-precheck/
+├── .claude-plugin/
+│   └── plugin.json           # Plugin metadata
+├── skills/
+│   └── precheck/
+│       ├── SKILL.md          # Main skill documentation
+│       ├── scripts/
+│       │   └── precheck.sh   # Automated scanner
+│       └── evals/
+│           └── evals.json    # Test cases
+└── README.md
+```
+
+## License
+
+MIT

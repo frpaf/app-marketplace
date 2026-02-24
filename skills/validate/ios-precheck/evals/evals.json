@@ -1,0 +1,248 @@
+{
+  "evals": [
+    {
+      "id": "ios-eval-1-blocker-background-audio",
+      "name": "Detect UIBackgroundModes audio blocker",
+      "prompt": "Run App Store pre-check on this Flutter project",
+      "files": {
+        "ios/Runner/Info.plist": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>UIBackgroundModes</key>\n\t<array>\n\t\t<string>audio</string>\n\t\t<string>fetch</string>\n\t</array>\n\t<key>NSCameraUsageDescription</key>\n\t<string>Take photos for your daily activities</string>\n</dict>\n</plist>",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag UIBackgroundModes 'audio' as a BLOCKER",
+        "Should explain that audio mode is only for streaming apps",
+        "Should recommend removing audio from UIBackgroundModes"
+      ]
+    },
+    {
+      "id": "ios-eval-2-generic-purpose-string",
+      "name": "Detect generic privacy purpose strings",
+      "prompt": "Check this app for App Store compliance issues",
+      "files": {
+        "ios/Runner/Info.plist": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>NSCameraUsageDescription</key>\n\t<string>Camera access</string>\n\t<key>NSPhotoLibraryUsageDescription</key>\n\t<string>This app needs photo access</string>\n</dict>\n</plist>",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Should flag camera description as too short/generic",
+        "Should flag photo library description as too generic",
+        "Should recommend adding specific usage examples",
+        "Should reference Guideline 5.1.1"
+      ]
+    },
+    {
+      "id": "ios-eval-3-placeholder-text",
+      "name": "Detect placeholder text in purpose strings",
+      "prompt": "Run pre-submission check",
+      "files": {
+        "ios/Runner/Info.plist": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>NSCameraUsageDescription</key>\n\t<string>Example: You should fill this in</string>\n\t<key>NSMicrophoneUsageDescription</key>\n\t<string>TODO: Add description</string>\n</dict>\n</plist>",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag both descriptions as BLOCKERS",
+        "Should identify placeholder text patterns (TODO, Example)",
+        "Should not pass these as warnings - they're definite blockers"
+      ]
+    },
+    {
+      "id": "ios-eval-4-ats-arbitrary-loads",
+      "name": "Detect NSAllowsArbitraryLoads enabled",
+      "prompt": "Check App Transport Security configuration",
+      "files": {
+        "ios/Runner/Info.plist": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>NSCameraUsageDescription</key>\n\t<string>Take photos of safety inspection items to attach to your report</string>\n\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>NSAllowsArbitraryLoads</key>\n\t\t<true/>\n\t</dict>\n</dict>\n</plist>",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Should flag NSAllowsArbitraryLoads as WARNING",
+        "Should explain this disables HTTPS enforcement",
+        "Should recommend removing or using exception domains instead",
+        "Camera description should pass — it's specific enough"
+      ]
+    },
+    {
+      "id": "ios-eval-5-missing-account-deletion",
+      "name": "Detect missing account deletion with login present",
+      "prompt": "Pre-check this app for App Store submission",
+      "files": {
+        "lib/auth/login.dart": "import 'package:firebase_auth/firebase_auth.dart';\n\nclass AuthService {\n  Future<void> signIn(String email, String password) async {\n    await FirebaseAuth.instance.signInWithEmailAndPassword(\n      email: email, password: password,\n    );\n  }\n  Future<void> createUser(String email, String password) async {\n    await FirebaseAuth.instance.createUserWithEmailAndPassword(\n      email: email, password: password,\n    );\n  }\n}",
+        "ios/Runner/Info.plist": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>CFBundleIdentifier</key>\n\t<string>com.example.app</string>\n</dict>\n</plist>",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0\ndependencies:\n  firebase_auth: ^4.0.0"
+      },
+      "expectations": [
+        "Must flag missing account deletion as BLOCKER",
+        "Should detect createUser/signIn as account creation",
+        "Should reference Guideline 5.1.1(v)",
+        "Should explain in-app deletion requirement"
+      ]
+    },
+    {
+      "id": "ios-eval-6-missing-restore-purchases",
+      "name": "Detect missing restore purchases with IAP present",
+      "prompt": "Check for App Store compliance",
+      "files": {
+        "lib/store/purchases.dart": "import 'package:in_app_purchase/in_app_purchase.dart';\n\nclass PurchaseService {\n  Future<void> buyProduct(String productId) async {\n    final response = await InAppPurchase.instance.buyConsumable(\n      purchaseParam: PurchaseParam(productDetails: details),\n    );\n  }\n}",
+        "ios/Runner/Info.plist": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>CFBundleIdentifier</key>\n\t<string>com.example.app</string>\n</dict>\n</plist>",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0\ndependencies:\n  in_app_purchase: ^3.0.0"
+      },
+      "expectations": [
+        "Must flag missing restore purchases as BLOCKER",
+        "Should detect in_app_purchase package",
+        "Should reference Guideline 3.1.1",
+        "Should recommend adding Restore Purchases button"
+      ]
+    },
+    {
+      "id": "ios-eval-7-flutter-bad-version",
+      "name": "Detect problematic Flutter version 3.24.3",
+      "prompt": "Check this Flutter app for iOS submission",
+      "files": {
+        "ios/Runner/Info.plist": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>NSCameraUsageDescription</key>\n\t<string>Take photos of items to add to your inventory list</string>\n</dict>\n</plist>",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0\nenvironment:\n  sdk: '>=3.5.0 <4.0.0'\n  flutter: 3.24.3"
+      },
+      "expectations": [
+        "Must flag Flutter 3.24.3 as BLOCKER",
+        "Should explain this version uses non-public iOS APIs",
+        "Should reference Guideline 2.5.1",
+        "Should recommend upgrading to 3.24.5+"
+      ]
+    },
+    {
+      "id": "ios-eval-8-background-voip",
+      "name": "Detect UIBackgroundModes voip without VoIP feature",
+      "prompt": "Run iOS precheck",
+      "files": {
+        "ios/Runner/Info.plist": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>UIBackgroundModes</key>\n\t<array>\n\t\t<string>voip</string>\n\t\t<string>remote-notification</string>\n\t</array>\n\t<key>NSCameraUsageDescription</key>\n\t<string>Capture photos of equipment during safety inspections</string>\n</dict>\n</plist>",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag UIBackgroundModes 'voip' as BLOCKER",
+        "Should explain voip mode is only for VoIP/calling apps",
+        "remote-notification should be fine"
+      ]
+    },
+    {
+      "id": "ios-eval-9-clean-ios-app",
+      "name": "Pass a properly configured iOS app",
+      "prompt": "Run App Store pre-submission validation",
+      "files": {
+        "ios/Runner/Info.plist": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>CFBundleIdentifier</key>\n\t<string>com.example.app</string>\n\t<key>CFBundleShortVersionString</key>\n\t<string>1.0.0</string>\n\t<key>CFBundleVersion</key>\n\t<string>1</string>\n\t<key>UIBackgroundModes</key>\n\t<array>\n\t\t<string>remote-notification</string>\n\t</array>\n\t<key>NSCameraUsageDescription</key>\n\t<string>Take photos to attach to your daily activity reports and share with caregivers in the ShowMyDay app</string>\n\t<key>NSPhotoLibraryUsageDescription</key>\n\t<string>Select existing photos from your library to add to activity reports and personalize your profile picture</string>\n\t<key>NSLocationWhenInUseUsageDescription</key>\n\t<string>Show your current location on the map to find nearby safety inspection sites</string>\n</dict>\n</plist>",
+        "lib/settings/delete_account.dart": "class AccountDeletion {\n  Future<void> deleteAccount() async {}\n}",
+        "lib/legal/privacy.dart": "const privacyPolicyUrl = 'https://example.com/privacy';",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Should pass all automated checks with no blockers",
+        "Privacy strings are specific — should pass",
+        "UIBackgroundModes only has remote-notification — should pass",
+        "Account deletion present — should pass",
+        "Privacy policy URL found — should pass",
+        "Should show App Store Connect manual checklist",
+        "Should indicate ready for submission pending manual checks"
+      ]
+    },
+    {
+      "id": "ios-eval-10-multiple-issues",
+      "name": "Detect multiple iOS issues in one app",
+      "prompt": "Run full App Store precheck on this Flutter project",
+      "files": {
+        "ios/Runner/Info.plist": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n\t<key>UIBackgroundModes</key>\n\t<array>\n\t\t<string>audio</string>\n\t</array>\n\t<key>NSCameraUsageDescription</key>\n\t<string>Camera</string>\n\t<key>NSMicrophoneUsageDescription</key>\n\t<string>PLACEHOLDER: update this</string>\n\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>NSAllowsArbitraryLoads</key>\n\t\t<true/>\n\t</dict>\n</dict>\n</plist>",
+        "lib/auth.dart": "class Auth {\n  void signIn() {}\n  void createAccount() {}\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0\ndependencies:\n  in_app_purchase: ^3.0.0"
+      },
+      "expectations": [
+        "Should flag UIBackgroundModes audio as BLOCKER",
+        "Should flag camera description 'Camera' as too short/generic",
+        "Should flag microphone description as BLOCKER — placeholder text",
+        "Should flag NSAllowsArbitraryLoads as WARNING",
+        "Should flag missing account deletion as BLOCKER",
+        "Should flag missing restore purchases as BLOCKER",
+        "Should show multiple blockers in summary — NOT READY"
+      ]
+    },
+    {
+      "id": "ios-eval-11-expo-no-prebuild",
+      "name": "Handle Expo project without iOS prebuild",
+      "prompt": "Run iOS precheck on my Expo app",
+      "files": {
+        "app.json": "{\n  \"expo\": {\n    \"name\": \"my-expo-app\",\n    \"slug\": \"my-expo-app\",\n    \"version\": \"1.0.0\",\n    \"ios\": {\n      \"bundleIdentifier\": \"com.example.myexpoapp\",\n      \"infoPlist\": {\n        \"NSCameraUsageDescription\": \"Take photos to attach to your reports\",\n        \"UIBackgroundModes\": [\"remote-notification\"]\n      }\n    }\n  }\n}",
+        "package.json": "{\n  \"name\": \"my-expo-app\",\n  \"dependencies\": {\n    \"expo\": \"~51.0.0\"\n  }\n}"
+      },
+      "expectations": [
+        "Should detect Expo project without prebuild",
+        "Should check app.json for ios.bundleIdentifier — should pass",
+        "Should check infoPlist for privacy strings — camera description should pass",
+        "Should check UIBackgroundModes from infoPlist — remote-notification is fine",
+        "Should suggest running npx expo prebuild for complete native checks"
+      ]
+    },
+    {
+      "id": "ios-eval-12-expo-bad-privacy-strings",
+      "name": "Detect bad privacy strings in Expo app.json",
+      "prompt": "Check Expo app for App Store issues",
+      "files": {
+        "app.json": "{\n  \"expo\": {\n    \"name\": \"my-expo-app\",\n    \"slug\": \"my-expo-app\",\n    \"version\": \"1.0.0\",\n    \"ios\": {\n      \"bundleIdentifier\": \"com.example.myexpoapp\",\n      \"infoPlist\": {\n        \"NSCameraUsageDescription\": \"Camera needed\",\n        \"NSLocationWhenInUseUsageDescription\": \"Location access\",\n        \"UIBackgroundModes\": [\"audio\", \"remote-notification\"]\n      }\n    }\n  }\n}",
+        "package.json": "{\n  \"name\": \"my-expo-app\",\n  \"dependencies\": {\n    \"expo\": \"~51.0.0\"\n  }\n}"
+      },
+      "expectations": [
+        "Should flag camera description as too short/generic from app.json",
+        "Should flag location description as too short/generic from app.json",
+        "Should flag UIBackgroundModes audio as BLOCKER from app.json",
+        "Should reference Guideline 5.1.1 for privacy strings",
+        "Should reference Guideline 2.5.4 for background modes"
+      ]
+    },
+    {
+      "id": "ios-eval-13-expo-plugin-permission-overrides",
+      "name": "Detect generic Expo plugin permission strings that override infoPlist",
+      "prompt": "Run iOS precheck on my Expo app",
+      "files": {
+        "app.json": "{\n  \"expo\": {\n    \"name\": \"safety-app\",\n    \"slug\": \"safety-app\",\n    \"version\": \"1.0.0\",\n    \"plugins\": [\n      [\"expo-camera\", {\n        \"cameraPermission\": \"Allow $(PRODUCT_NAME) to access your camera\",\n        \"microphonePermission\": \"Allow $(PRODUCT_NAME) to access your microphone\"\n      }],\n      [\"expo-image-picker\", {\n        \"photosPermission\": \"The app accesses your photos to let you share them with your friends.\"\n      }],\n      [\"expo-location\", {\n        \"locationAlwaysAndWhenInUsePermission\": \"Allow $(PRODUCT_NAME) to use your location.\"\n      }]\n    ],\n    \"ios\": {\n      \"bundleIdentifier\": \"com.example.safetyapp\",\n      \"infoPlist\": {\n        \"NSCameraUsageDescription\": \"This app uses the camera to take photos for incident reports.\",\n        \"NSLocationWhenInUseUsageDescription\": \"This app uses your location to tag incident reports.\"\n      }\n    }\n  }\n}",
+        "package.json": "{\n  \"name\": \"safety-app\",\n  \"dependencies\": {\n    \"expo\": \"~51.0.0\",\n    \"expo-camera\": \"~15.0.0\",\n    \"expo-image-picker\": \"~15.0.0\",\n    \"expo-location\": \"~17.0.0\"\n  }\n}",
+        "src/screens/ReportScreen.js": "import * as Location from 'expo-location';\n\nconst getLocation = async () => {\n  const { status } = await Location.requestForegroundPermissionsAsync();\n  const location = await Location.getCurrentPositionAsync({});\n  return location;\n};"
+      },
+      "expectations": [
+        "Must flag expo-camera cameraPermission as BLOCKER — generic $(PRODUCT_NAME) pattern",
+        "Must flag expo-camera microphonePermission as BLOCKER — generic $(PRODUCT_NAME) pattern",
+        "Must flag expo-image-picker photosPermission as BLOCKER — mentions 'friends' (wrong context)",
+        "Must flag expo-location permission as BLOCKER — generic $(PRODUCT_NAME) pattern",
+        "Should explain plugin configs override infoPlist values",
+        "Good infoPlist strings should NOT prevent flagging bad plugin strings"
+      ]
+    },
+    {
+      "id": "ios-eval-14-foreground-location-with-always-permission",
+      "name": "Detect Always location permission with foreground-only location code",
+      "prompt": "Check this Expo app for App Store compliance",
+      "files": {
+        "app.json": "{\n  \"expo\": {\n    \"name\": \"safety-app\",\n    \"slug\": \"safety-app\",\n    \"version\": \"1.0.0\",\n    \"plugins\": [\n      [\"expo-location\", {\n        \"locationAlwaysAndWhenInUsePermission\": \"This app uses your location to tag reports.\"\n      }]\n    ],\n    \"ios\": {\n      \"bundleIdentifier\": \"com.example.safetyapp\",\n      \"infoPlist\": {\n        \"NSLocationAlwaysAndWhenInUseUsageDescription\": \"This app uses your location to tag reports.\",\n        \"NSLocationAlwaysUsageDescription\": \"This app needs background location.\",\n        \"UIBackgroundModes\": [\"location\", \"fetch\", \"remote-notification\"]\n      }\n    }\n  }\n}",
+        "package.json": "{\n  \"name\": \"safety-app\",\n  \"dependencies\": {\n    \"expo\": \"~51.0.0\",\n    \"expo-location\": \"~17.0.0\"\n  }\n}",
+        "src/utils/location.js": "import * as Location from 'expo-location';\n\nexport const getIncidentLocation = async () => {\n  const { status } = await Location.requestForegroundPermissionsAsync();\n  if (status !== 'granted') return null;\n  return await Location.getCurrentPositionAsync({});\n};"
+      },
+      "expectations": [
+        "Must flag UIBackgroundModes 'location' as BLOCKER — no background location code found",
+        "Must flag foreground-only code with Always location permission as BLOCKER",
+        "Should recommend removing 'location' from UIBackgroundModes",
+        "Should recommend changing to locationWhenInUsePermission",
+        "Should recommend removing NSLocationAlwaysUsageDescription and NSLocationAlwaysAndWhenInUseUsageDescription"
+      ]
+    },
+    {
+      "id": "ios-eval-15-b2b-enterprise-app",
+      "name": "Detect B2B/enterprise distribution signals",
+      "prompt": "Run iOS precheck on this safety management app",
+      "files": {
+        "app.json": "{\n  \"expo\": {\n    \"name\": \"safety-net\",\n    \"slug\": \"safety-net\",\n    \"version\": \"1.0.0\",\n    \"ios\": {\n      \"bundleIdentifier\": \"com.example.safetynet\"\n    }\n  }\n}",
+        "package.json": "{\n  \"name\": \"safety-net\",\n  \"dependencies\": {\n    \"expo\": \"~51.0.0\"\n  }\n}",
+        "src/auth/LoginScreen.js": "const LoginScreen = () => {\n  const handleLogin = async (orgCode) => {\n    // Organization login with company code\n    const response = await api.post('/auth/enterprise/login', { orgCode });\n    return response;\n  };\n};",
+        "src/admin/AdminDashboard.js": "const AdminDashboard = () => {\n  // Admin panel for managing users within the organization\n  const manageUsers = async () => {\n    const users = await api.get('/admin/users');\n  };\n  // Role-based access control\n  const updateRole = async (userId, role) => {};\n};",
+        "src/onboarding/InviteScreen.js": "const InviteScreen = () => {\n  // Invite-only access via organization invitation code\n  const redeemInvite = async (invitationCode) => {\n    return await api.post('/auth/invite', { code: invitationCode });\n  };\n};"
+      },
+      "expectations": [
+        "Should flag B2B/enterprise patterns as WARNING",
+        "Should detect enterprise login, admin panel, invite-only, and role-based patterns",
+        "Should recommend preparing Guideline 3.2 response for Apple",
+        "Should list the 5 questions Apple may ask about distribution",
+        "Should NOT be a blocker — just a warning to prepare"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,362 @@
+{
+  "evals": [
+    {
+      "id": "android-eval-1-target-sdk-blocker",
+      "name": "Detect outdated Android targetSdk as blocker",
+      "prompt": "Check Android configuration for Play Store",
+      "files": {
+        "android/app/build.gradle": "android {\n    compileSdk 33\n    defaultConfig {\n        applicationId \"com.example.app\"\n        minSdk 21\n        targetSdk 33\n        versionCode 1\n        versionName \"1.0.0\"\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag targetSdk 33 as BLOCKER",
+        "Should explain that targetSdk 35 is required for new apps and updates since Aug 2025",
+        "Should mention Google Play requirements and recommend updating to 35"
+      ]
+    },
+    {
+      "id": "android-eval-2-target-sdk-34-blocker",
+      "name": "Detect targetSdk 34 as blocker (post Aug 2025)",
+      "prompt": "Run Play Store precheck",
+      "files": {
+        "android/app/build.gradle": "android {\n    compileSdk 34\n    defaultConfig {\n        applicationId \"com.example.app\"\n        minSdk 21\n        targetSdk 34\n        versionCode 1\n        versionName \"1.0.0\"\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag targetSdk 34 as BLOCKER since Aug 2025 deadline has passed",
+        "Should explain new apps and updates require targetSdk 35+",
+        "Should not treat this as just a warning"
+      ]
+    },
+    {
+      "id": "android-eval-3-compile-sdk-mismatch",
+      "name": "Detect compileSdk lower than targetSdk",
+      "prompt": "Check Android build configuration",
+      "files": {
+        "android/app/build.gradle": "android {\n    compileSdk 34\n    defaultConfig {\n        applicationId \"com.example.app\"\n        minSdk 21\n        targetSdk 35\n        versionCode 1\n        versionName \"1.0.0\"\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Should flag compileSdk 34 < targetSdk 35 as WARNING",
+        "Should recommend compileSdk be >= targetSdk",
+        "targetSdk 35 itself should pass"
+      ]
+    },
+    {
+      "id": "android-eval-4-aab-format-apk-build",
+      "name": "Detect APK-only build configuration",
+      "prompt": "Check if this app is ready for Play Store submission",
+      "files": {
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        minSdk 21\n        targetSdk 35\n    }\n}",
+        ".github/workflows/release.yml": "name: Release\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: flutter build apk --release\n      - name: Upload to Play Store\n        run: fastlane supply --apk build/app/outputs/flutter-apk/app-release.apk",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag APK build as BLOCKER — Google requires AAB for new apps",
+        "Should detect flutter build apk in CI config",
+        "Should recommend flutter build appbundle instead"
+      ]
+    },
+    {
+      "id": "android-eval-5-restricted-permissions-sms",
+      "name": "Detect restricted SMS/Call Log permissions",
+      "prompt": "Run Android permissions audit",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.READ_SMS\" />\n    <uses-permission android:name=\"android.permission.SEND_SMS\" />\n    <uses-permission android:name=\"android.permission.READ_CALL_LOG\" />\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <application android:label=\"test_app\">\n        <activity android:name=\".MainActivity\" />\n    </application>\n</manifest>",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag READ_SMS as BLOCKER — only allowed for default SMS handler apps",
+        "Must flag SEND_SMS as BLOCKER — only allowed for default SMS handler apps",
+        "Must flag READ_CALL_LOG as BLOCKER — only allowed for default Phone handler apps",
+        "Should explain Permissions Declaration Form is required",
+        "INTERNET and CAMERA should not be flagged as restricted"
+      ]
+    },
+    {
+      "id": "android-eval-6-background-location",
+      "name": "Detect background location permission",
+      "prompt": "Check this Android app for Play Store compliance",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\" />\n    <uses-permission android:name=\"android.permission.ACCESS_BACKGROUND_LOCATION\" />\n    <application android:label=\"test_app\">\n        <activity android:name=\".MainActivity\" />\n    </application>\n</manifest>",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag ACCESS_BACKGROUND_LOCATION as BLOCKER — requires Permissions Declaration Form",
+        "Should warn about ACCESS_FINE_LOCATION — consider if coarse location is sufficient",
+        "Should recommend foreground service with location type as alternative"
+      ]
+    },
+    {
+      "id": "android-eval-7-manage-external-storage",
+      "name": "Detect MANAGE_EXTERNAL_STORAGE permission",
+      "prompt": "Run Play Store precheck",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.MANAGE_EXTERNAL_STORAGE\" />\n    <application android:label=\"test_app\">\n        <activity android:name=\".MainActivity\" />\n    </application>\n</manifest>",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag MANAGE_EXTERNAL_STORAGE as BLOCKER",
+        "Should explain this requires All Files Access review before publishing",
+        "Should recommend Scoped Storage, MediaStore, or SAF instead"
+      ]
+    },
+    {
+      "id": "android-eval-8-legacy-storage-no-maxsdk",
+      "name": "Detect legacy storage permissions without maxSdkVersion",
+      "prompt": "Check Android permissions for Play Store",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" />\n    <uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" />\n    <application android:label=\"test_app\">\n        <activity android:name=\".MainActivity\" />\n    </application>\n</manifest>",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag READ_EXTERNAL_STORAGE without maxSdkVersion as BLOCKER on API 35",
+        "Must flag WRITE_EXTERNAL_STORAGE without maxSdkVersion as BLOCKER on API 35",
+        "Should recommend maxSdkVersion=\"32\" for READ and maxSdkVersion=\"29\" for WRITE",
+        "Should suggest Photo Picker, MediaStore, or SAF as replacements"
+      ]
+    },
+    {
+      "id": "android-eval-9-legacy-storage-with-maxsdk",
+      "name": "Pass legacy storage permissions with proper maxSdkVersion",
+      "prompt": "Check Android permissions",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.READ_EXTERNAL_STORAGE\" android:maxSdkVersion=\"32\" />\n    <uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" android:maxSdkVersion=\"29\" />\n    <application android:label=\"test_app\">\n        <activity android:name=\".MainActivity\" />\n    </application>\n</manifest>",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Should NOT flag storage permissions as blockers — maxSdkVersion is set",
+        "Should pass the storage policy check"
+      ]
+    },
+    {
+      "id": "android-eval-10-foreground-service-missing-type",
+      "name": "Detect foreground service without foregroundServiceType",
+      "prompt": "Run Android precheck",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\" />\n    <application android:label=\"test_app\">\n        <activity android:name=\".MainActivity\" />\n        <service android:name=\".LocationService\" />\n        <service android:name=\".UploadService\" android:exported=\"false\" />\n    </application>\n</manifest>",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag LocationService as BLOCKER — missing foregroundServiceType",
+        "Must flag UploadService as BLOCKER — missing foregroundServiceType",
+        "Should explain foregroundServiceType is required since API 34",
+        "Should explain missing type causes crash on Android 14+"
+      ]
+    },
+    {
+      "id": "android-eval-11-foreground-service-valid-type",
+      "name": "Pass foreground service with valid type declared",
+      "prompt": "Check Android services configuration",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\" />\n    <uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_LOCATION\" />\n    <uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_DATA_SYNC\" />\n    <application android:label=\"test_app\">\n        <activity android:name=\".MainActivity\" />\n        <service\n            android:name=\".LocationService\"\n            android:foregroundServiceType=\"location\"\n            android:exported=\"false\" />\n        <service\n            android:name=\".UploadService\"\n            android:foregroundServiceType=\"dataSync\"\n            android:exported=\"false\" />\n    </application>\n</manifest>",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Should pass both services — valid foregroundServiceType declared",
+        "Should NOT flag any blockers for foreground services"
+      ]
+    },
+    {
+      "id": "android-eval-12-cleartext-traffic",
+      "name": "Detect cleartext traffic enabled in manifest",
+      "prompt": "Run network security check for Android",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <application\n        android:label=\"test_app\"\n        android:usesCleartextTraffic=\"true\">\n        <activity android:name=\".MainActivity\" />\n    </application>\n</manifest>",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Should flag usesCleartextTraffic=true as WARNING",
+        "Should explain Data Safety mismatch risk if encryption in transit is declared",
+        "Should recommend setting to false and using HTTPS only"
+      ]
+    },
+    {
+      "id": "android-eval-13-network-security-config-cleartext",
+      "name": "Detect cleartext in network security config file",
+      "prompt": "Check network security configuration",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <application\n        android:label=\"test_app\"\n        android:networkSecurityConfig=\"@xml/network_security_config\">\n        <activity android:name=\".MainActivity\" />\n    </application>\n</manifest>",
+        "android/app/src/main/res/xml/network_security_config.xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<network-security-config>\n    <base-config cleartextTrafficPermitted=\"true\">\n        <trust-anchors>\n            <certificates src=\"system\" />\n        </trust-anchors>\n    </base-config>\n</network-security-config>",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Should flag cleartextTrafficPermitted=true in network_security_config.xml as WARNING",
+        "Should recommend setting to false"
+      ]
+    },
+    {
+      "id": "android-eval-14-missing-signing-and-r8",
+      "name": "Detect missing signing config and R8 disabled",
+      "prompt": "Check release build configuration",
+      "files": {
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n        versionCode 1\n        versionName \"1.0.0\"\n    }\n    buildTypes {\n        release {\n            minifyEnabled false\n            shrinkResources false\n        }\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Should flag missing signingConfigs as WARNING",
+        "Should flag minifyEnabled false as WARNING — R8 not enabled",
+        "Should flag shrinkResources false as WARNING",
+        "Should recommend enabling code shrinking for release"
+      ]
+    },
+    {
+      "id": "android-eval-15-key-properties-not-gitignored",
+      "name": "Detect key.properties not in .gitignore",
+      "prompt": "Check signing security",
+      "files": {
+        "android/key.properties": "storePassword=mypassword\nkeyPassword=mypassword\nkeyAlias=upload\nstoreFile=upload-keystore.jks",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n    signingConfigs {\n        release {\n            keyAlias keystoreProperties['keyAlias']\n        }\n    }\n}",
+        ".gitignore": "build/\n.gradle/\nlocal.properties\n",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Should flag key.properties NOT in .gitignore as WARNING",
+        "Should explain keystore passwords would be exposed in source control"
+      ]
+    },
+    {
+      "id": "android-eval-16-play-billing-old-version",
+      "name": "Detect outdated Play Billing Library",
+      "prompt": "Check in-app purchase configuration",
+      "files": {
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}\n\ndependencies {\n    implementation 'com.android.billingclient:billing:5.2.1'\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0\ndependencies:\n  in_app_purchase: ^3.0.0"
+      },
+      "expectations": [
+        "Must flag billing library v5.2.1 as BLOCKER — must be v7+",
+        "Should recommend updating to latest billing client version"
+      ]
+    },
+    {
+      "id": "android-eval-17-sdk-data-safety-firebase",
+      "name": "Detect Firebase SDKs and map to Data Safety requirements",
+      "prompt": "Audit SDKs for Data Safety form",
+      "files": {
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}\n\ndependencies {\n    implementation platform('com.google.firebase:firebase-bom:33.0.0')\n    implementation 'com.google.firebase:firebase-analytics'\n    implementation 'com.google.firebase:firebase-crashlytics'\n    implementation 'com.google.firebase:firebase-messaging'\n    implementation 'com.google.firebase:firebase-auth'\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0\ndependencies:\n  firebase_core: ^2.0.0\n  firebase_analytics: ^10.0.0\n  firebase_crashlytics: ^3.0.0\n  firebase_messaging: ^14.0.0\n  firebase_auth: ^4.0.0"
+      },
+      "expectations": [
+        "Should detect Firebase Analytics — flag Data Safety: Device IDs, App activity, Diagnostics",
+        "Should detect Firebase Crashlytics — flag Data Safety: Crash logs, Device IDs",
+        "Should detect Firebase Cloud Messaging — flag Data Safety: Device IDs",
+        "Should detect Firebase Auth — flag Data Safety: Email, User IDs, Phone number",
+        "Should output a consolidated Data Safety form checklist"
+      ]
+    },
+    {
+      "id": "android-eval-18-sdk-data-safety-mixed",
+      "name": "Detect mixed SDKs for Data Safety mapping",
+      "prompt": "Check what I need to declare in Data Safety form",
+      "files": {
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0\ndependencies:\n  sentry_flutter: ^7.0.0\n  onesignal_flutter: ^5.0.0\n  google_maps_flutter: ^2.5.0\n  flutter_facebook_sdk: ^0.2.0",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}"
+      },
+      "expectations": [
+        "Should detect Sentry — flag Data Safety: Crash logs, Diagnostics, Device IDs",
+        "Should detect OneSignal — flag Data Safety: Device IDs, Personal info",
+        "Should detect Google Maps — flag Data Safety: Location data",
+        "Should detect Facebook SDK — flag Data Safety: Device IDs, Advertising"
+      ]
+    },
+    {
+      "id": "android-eval-19-missing-account-deletion",
+      "name": "Detect missing account deletion with login present",
+      "prompt": "Check for Play Store compliance",
+      "files": {
+        "lib/auth/login.dart": "import 'package:firebase_auth/firebase_auth.dart';\n\nclass AuthService {\n  Future<void> signIn(String email, String password) async {\n    await FirebaseAuth.instance.signInWithEmailAndPassword(\n      email: email, password: password,\n    );\n  }\n  Future<void> createUser(String email, String password) async {\n    await FirebaseAuth.instance.createUserWithEmailAndPassword(\n      email: email, password: password,\n    );\n  }\n}",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0\ndependencies:\n  firebase_auth: ^4.0.0"
+      },
+      "expectations": [
+        "Must flag missing account deletion as BLOCKER",
+        "Should detect createUser/signIn as login indicators",
+        "Should explain Google Play requires account deletion option"
+      ]
+    },
+    {
+      "id": "android-eval-20-request-install-packages",
+      "name": "Detect REQUEST_INSTALL_PACKAGES permission",
+      "prompt": "Audit Android manifest permissions",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.REQUEST_INSTALL_PACKAGES\" />\n    <application android:label=\"test_app\">\n        <activity android:name=\".MainActivity\" />\n    </application>\n</manifest>",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag REQUEST_INSTALL_PACKAGES as BLOCKER",
+        "Should explain this allows sideloading and is highly scrutinized"
+      ]
+    },
+    {
+      "id": "android-eval-21-clean-android-app",
+      "name": "Pass a properly configured Android app",
+      "prompt": "Run Play Store pre-submission validation",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.CAMERA\" />\n    <uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\" />\n    <uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_LOCATION\" />\n    <application\n        android:label=\"test_app\"\n        android:networkSecurityConfig=\"@xml/network_security_config\"\n        android:usesCleartextTraffic=\"false\">\n        <activity android:name=\".MainActivity\" />\n        <service\n            android:name=\".LocationService\"\n            android:foregroundServiceType=\"location\"\n            android:exported=\"false\" />\n    </application>\n</manifest>",
+        "android/app/src/main/res/xml/network_security_config.xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<network-security-config>\n    <base-config cleartextTrafficPermitted=\"false\">\n        <trust-anchors>\n            <certificates src=\"system\" />\n        </trust-anchors>\n    </base-config>\n</network-security-config>",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        minSdk 21\n        targetSdk 35\n        versionCode 1\n        versionName \"1.0.0\"\n    }\n    signingConfigs {\n        release {\n            keyAlias keystoreProperties['keyAlias']\n            keyPassword keystoreProperties['keyPassword']\n            storeFile file(keystoreProperties['storeFile'])\n            storePassword keystoreProperties['storePassword']\n        }\n    }\n    buildTypes {\n        release {\n            signingConfig signingConfigs.release\n            minifyEnabled true\n            shrinkResources true\n            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'\n        }\n    }\n}",
+        "android/key.properties": "storePassword=secret\nkeyPassword=secret\nkeyAlias=upload\nstoreFile=upload-keystore.jks",
+        ".gitignore": "build/\n.gradle/\nlocal.properties\nkey.properties\n*.jks\n",
+        "lib/settings/delete_account.dart": "class AccountDeletion {\n  Future<void> deleteAccount() async {}\n}",
+        "lib/legal/privacy.dart": "const privacyPolicyUrl = 'https://example.com/privacy';",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Should pass all automated checks with no blockers",
+        "targetSdk 35, signing, R8, network security, foreground services all pass",
+        "Account deletion and privacy policy present — should pass",
+        "Should show Play Console manual checklist",
+        "Should indicate ready for submission pending manual checks"
+      ]
+    },
+    {
+      "id": "android-eval-22-multiple-issues",
+      "name": "Detect multiple Android issues in one app",
+      "prompt": "Run full Play Store precheck on this Flutter project",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.READ_SMS\" />\n    <uses-permission android:name=\"android.permission.WRITE_EXTERNAL_STORAGE\" />\n    <uses-permission android:name=\"android.permission.ACCESS_BACKGROUND_LOCATION\" />\n    <uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\" />\n    <application\n        android:label=\"test_app\"\n        android:usesCleartextTraffic=\"true\">\n        <activity android:name=\".MainActivity\" />\n        <service android:name=\".SyncService\" />\n    </application>\n</manifest>",
+        "android/app/build.gradle": "android {\n    compileSdk 33\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 33\n    }\n    buildTypes {\n        release {\n            minifyEnabled false\n        }\n    }\n}\n\ndependencies {\n    implementation 'com.android.billingclient:billing:5.0.0'\n}",
+        "lib/auth.dart": "class Auth {\n  void signIn() {}\n  void createAccount() {}\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0\ndependencies:\n  firebase_analytics: ^10.0.0\n  firebase_crashlytics: ^3.0.0\n  in_app_purchase: ^3.0.0"
+      },
+      "expectations": [
+        "Must flag targetSdk 33 as BLOCKER",
+        "Must flag READ_SMS as BLOCKER (restricted permission)",
+        "Must flag WRITE_EXTERNAL_STORAGE without maxSdkVersion as BLOCKER",
+        "Must flag ACCESS_BACKGROUND_LOCATION as BLOCKER",
+        "Must flag SyncService missing foregroundServiceType as BLOCKER",
+        "Must flag billing library v5.0.0 as BLOCKER",
+        "Should flag usesCleartextTraffic=true as WARNING",
+        "Should flag minifyEnabled false as WARNING",
+        "Should flag missing account deletion as BLOCKER",
+        "Should detect Firebase SDKs for Data Safety",
+        "Should show high blocker count — NOT READY"
+      ]
+    },
+    {
+      "id": "android-eval-23-expo-no-prebuild",
+      "name": "Handle Expo project without prebuild",
+      "prompt": "Run Android precheck on my Expo app",
+      "files": {
+        "app.json": "{\n  \"expo\": {\n    \"name\": \"my-expo-app\",\n    \"slug\": \"my-expo-app\",\n    \"version\": \"1.0.0\",\n    \"android\": {\n      \"package\": \"com.example.myexpoapp\",\n      \"versionCode\": 1,\n      \"permissions\": [\"CAMERA\", \"ACCESS_FINE_LOCATION\"]\n    }\n  }\n}",
+        "package.json": "{\n  \"name\": \"my-expo-app\",\n  \"dependencies\": {\n    \"expo\": \"~51.0.0\",\n    \"@react-native-firebase/analytics\": \"^18.0.0\"\n  }\n}"
+      },
+      "expectations": [
+        "Should detect Expo project without prebuild",
+        "Should check app.json for android.package — should pass",
+        "Should suggest running npx expo prebuild for complete native checks",
+        "Should detect Firebase Analytics in dependencies for Data Safety"
+      ]
+    }
+  ]
+}
