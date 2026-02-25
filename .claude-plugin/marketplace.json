@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "app-marketplace",
+  "description": "Mobile app lifecycle tools — validate submissions, generate store assets, and deploy to App Store and Google Play.",
+  "owner": {
+    "name": "frpaf"
+  },
+  "plugins": [
+    {
+      "name": "app-marketplace",
+      "description": "Mobile app lifecycle tools — validate submissions, generate store assets, and deploy to App Store and Google Play.",
+      "version": "2.0.0",
+      "author": {
+        "name": "frpaf"
+      },
+      "source": ".",
+      "category": "deployment",
+      "homepage": "https://github.com/frpaf/app-marketplace"
+    }
+  ]
+}
