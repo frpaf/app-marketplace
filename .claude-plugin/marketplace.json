@@ -13,7 +13,7 @@
       "author": {
         "name": "frpaf"
       },
-      "source": ".",
+      "source": "./plugins/app-marketplace",
       "category": "deployment",
       "homepage": "https://github.com/frpaf/app-marketplace"
     }
