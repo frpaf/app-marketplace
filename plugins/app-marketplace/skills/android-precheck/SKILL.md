@@ -27,6 +27,26 @@ Automated pre-submission validation to catch common rejection issues **before** 
 | **Expo** | `app.json` + expo | `npx expo prebuild` → `npx expo run:android` |
 | **React Native** | `package.json` | Native builds |
 
+## Step 0 — Check Dependencies (run every time)
+
+Before doing anything else, verify that Bash is available and the precheck script exists:
+
+```bash
+bash --version && test -f precheck-android.sh && echo "Ready"
+```
+
+**If Bash is missing**:
+- **macOS**: Bash is pre-installed. If missing, reinstall Xcode Command Line Tools: `xcode-select --install`
+- **Windows**: Install Git Bash from https://git-scm.com/downloads or use WSL: `wsl --install`
+- **Linux**: `sudo apt update && sudo apt install bash`
+
+**If the precheck script is not found**, ensure you are in the project root directory where `precheck-android.sh` is located. The script must be executable:
+```bash
+chmod +x precheck-android.sh
+```
+
+Do NOT proceed until the check above passes.
+
 ## Quick Start
 
 Run from your project root:

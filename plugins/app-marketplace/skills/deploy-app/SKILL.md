@@ -22,6 +22,37 @@ Deploy the current mobile app to app stores using the `store-deploy` CLI.
 
 **Do NOT:** retry, fix files, install dependencies, try alternative commands, or suggest fixes. Just report and stop.
 
+## Step 0 — Check Dependencies (run every time)
+
+Before doing anything else, verify that the required tools are installed:
+
+```bash
+node --version && npm --version && ruby --version && gem --version && git --version
+```
+
+**If Node.js/npm is missing**:
+- **macOS**: `brew install node` or download from https://nodejs.org/
+- **Windows**: Download from https://nodejs.org/ — the installer adds Node.js and npm to PATH
+- **Linux**: `sudo apt update && sudo apt install nodejs npm`
+
+**If Ruby is missing** (needed for Fastlane):
+- **macOS**: Ruby is pre-installed. If outdated: `brew install ruby`
+- **Windows**: Download from https://rubyinstaller.org/
+- **Linux**: `sudo apt update && sudo apt install ruby-full`
+
+**If Bundler is missing** (Ruby gem manager for Fastlane):
+```bash
+gem install bundler
+```
+If permission error: `sudo gem install bundler`
+
+**If git is missing**:
+- **macOS**: `xcode-select --install`
+- **Windows**: Download from https://git-scm.com/downloads
+- **Linux**: `sudo apt update && sudo apt install git`
+
+Do NOT proceed until all checks pass.
+
 ## Pre-flight: MANDATORY — Install or Update CLI
 
 **You MUST run this exact command first before any other command.** This ensures the CLI is installed and up-to-date. Do NOT simplify or skip this step.

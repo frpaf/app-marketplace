@@ -37,6 +37,42 @@ You MUST execute all four phases in order. Do NOT stop after capturing screensho
 
 ## Workflow
 
+### Phase 0 — Check Dependencies (run every time)
+
+Before doing anything else, verify that all required tools are installed:
+
+```bash
+python3 --version && python3 -c "from PIL import Image; print('Pillow OK')" && which agent-device
+```
+
+**If Python 3 is missing**, guide the user to install it:
+- **macOS**: `brew install python` or download from https://www.python.org/downloads/
+- **Windows**: Download from https://www.python.org/downloads/ — check "Add Python to PATH" during install
+- **Linux**: `sudo apt update && sudo apt install python3 python3-pip`
+
+**If Pillow is missing**:
+```bash
+pip3 install Pillow
+```
+If permission error: `pip3 install --user Pillow`
+
+**If `agent-device` is missing**:
+```bash
+npm install -g agent-device
+```
+Requires Node.js. If Node.js is not installed:
+- **macOS**: `brew install node` or download from https://nodejs.org/
+- **Windows**: Download from https://nodejs.org/ — the installer adds it to PATH
+- **Linux**: `sudo apt update && sudo apt install nodejs npm`
+
+**If using Claude API for text generation (optional)**, the `anthropic` SDK is needed:
+```bash
+pip3 install anthropic
+```
+And the `ANTHROPIC_API_KEY` environment variable must be set.
+
+Re-run the check after installation. Do NOT proceed until all required dependencies are confirmed working.
+
 ### Phase 1 — App Exploration
 
 Use `agent-device` to systematically explore the app and capture unique screens.

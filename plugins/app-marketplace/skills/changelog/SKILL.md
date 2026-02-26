@@ -11,6 +11,26 @@ allowed-tools: Bash, Read
 
 Generate release notes from git commit history for app store deployments.
 
+## Step 0 — Check Dependencies (run every time)
+
+Before doing anything else, verify that the required tools are installed:
+
+```bash
+node --version && npm --version && git --version
+```
+
+**If Node.js/npm is missing**:
+- **macOS**: `brew install node` or download from https://nodejs.org/
+- **Windows**: Download from https://nodejs.org/ — the installer adds Node.js and npm to PATH
+- **Linux**: `sudo apt update && sudo apt install nodejs npm`
+
+**If git is missing**:
+- **macOS**: `xcode-select --install` (installs git with Command Line Tools)
+- **Windows**: Download from https://git-scm.com/downloads
+- **Linux**: `sudo apt update && sudo apt install git`
+
+Do NOT proceed until all checks pass.
+
 ## Pre-flight: MANDATORY — Install or Update CLI
 
 **You MUST run this exact command first before any other command.** This ensures the CLI is installed and up-to-date. Do NOT simplify or skip this step.
