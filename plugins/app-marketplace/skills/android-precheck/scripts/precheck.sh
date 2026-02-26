@@ -222,13 +222,21 @@ if [ -n "$MANIFEST" ]; then
         echo -e "  ${YELLOW}⚠️  SYSTEM_ALERT_WINDOW — must justify${NC}"
         WARNING_MSGS+=("SYSTEM_ALERT_WINDOW — must justify"); ((WARNINGS++)); DANGEROUS_FOUND=true
     fi
-    for perm in READ_MEDIA_IMAGES READ_MEDIA_VIDEO; do
+    [ "$DANGEROUS_FOUND" = false ] && echo -e "  ${GREEN}✅${NC} No dangerous permission concerns" && ((PASSED++))
+    echo ""
+
+    # Photo & Video Permissions (require Play Console declaration)
+    echo "▸ Photo & Video Permissions"
+    PHOTO_VIDEO_FOUND=false
+    for perm in READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_VISUAL_USER_SELECTED; do
         if grep -q "android.permission.$perm" "$MANIFEST" 2>/dev/null; then
-            echo -e "  ${YELLOW}⚠️  $perm — consider Photo Picker${NC}"
-            WARNING_MSGS+=("$perm — consider Photo Picker"); ((WARNINGS++)); DANGEROUS_FOUND=true
+            echo -e "  ${RED}❌ BLOCKER: $perm — requires Photo & Video Permissions declaration in Play Console${NC}"
+            echo "     Go to Play Console → App content → Photo and video permissions"
+            BLOCKER_MSGS+=("$perm — complete Photo & Video Permissions declaration in Play Console"); ((BLOCKERS++))
+            PHOTO_VIDEO_FOUND=true
         fi
     done
-    [ "$DANGEROUS_FOUND" = false ] && echo -e "  ${GREEN}✅${NC} No dangerous permission concerns" && ((PASSED++))
+    [ "$PHOTO_VIDEO_FOUND" = false ] && echo -e "  ${GREEN}✅${NC} No photo/video permission concerns" && ((PASSED++))
     echo ""
 
     # Legacy Storage
@@ -248,6 +256,36 @@ if [ -n "$MANIFEST" ]; then
     if [ "$STORAGE_ISSUE" = false ] && ! grep -q "EXTERNAL_STORAGE" "$MANIFEST" 2>/dev/null; then
         echo -e "  ${GREEN}✅${NC} No legacy storage permissions"; ((PASSED++))
     fi
+    echo ""
+fi
+
+# Photo & Video Permissions — Flutter pre-build check (no android/ directory)
+if [ "$PROJECT_TYPE" = "flutter" ] && [ -z "$MANIFEST" ]; then
+    echo "▸ Photo & Video Permissions (pubspec.yaml scan)"
+    PHOTO_VIDEO_FOUND=false
+    for pkg in image_picker photo_manager file_picker wechat_assets_picker; do
+        if grep -q "$pkg" pubspec.yaml 2>/dev/null; then
+            echo -e "  ${RED}❌ BLOCKER: $pkg in pubspec.yaml — will add READ_MEDIA_* permissions${NC}"
+            echo "     Requires Photo & Video Permissions declaration in Play Console"
+            BLOCKER_MSGS+=("$pkg — complete Photo & Video Permissions declaration in Play Console"); ((BLOCKERS++))
+            PHOTO_VIDEO_FOUND=true
+        fi
+    done
+    [ "$PHOTO_VIDEO_FOUND" = false ] && echo -e "  ${GREEN}✅${NC} No photo/video packages detected" && ((PASSED++))
+    echo ""
+fi
+
+# Photo & Video Permissions — Expo pre-prebuild check (no android/ directory)
+if [ "$PROJECT_TYPE" = "expo" ] && [ -z "$MANIFEST" ]; then
+    echo "▸ Photo & Video Permissions (app.json scan)"
+    PHOTO_VIDEO_FOUND=false
+    if grep -qE "expo-media-library|expo-image-picker" app.json 2>/dev/null; then
+        echo -e "  ${RED}❌ BLOCKER: expo-media-library/expo-image-picker plugin — will add READ_MEDIA_* permissions${NC}"
+        echo "     Requires Photo & Video Permissions declaration in Play Console"
+        BLOCKER_MSGS+=("Photo/video plugin — complete Photo & Video Permissions declaration in Play Console"); ((BLOCKERS++))
+        PHOTO_VIDEO_FOUND=true
+    fi
+    [ "$PHOTO_VIDEO_FOUND" = false ] && echo -e "  ${GREEN}✅${NC} No photo/video plugins detected" && ((PASSED++))
     echo ""
 fi
 
@@ -432,6 +470,7 @@ echo "   [ ] Content rating questionnaire"
 echo "   [ ] Target audience declaration"
 echo "   [ ] Ads + Financial features declarations"
 echo "   [ ] Permissions Declaration Form (if restricted perms)"
+echo "   [ ] Photo & video permissions declaration (if READ_MEDIA_* used)"
 echo "   [ ] Developer account verified (2026)"
 echo "   [ ] Screenshots: min 2, 9:16, no frames"
 

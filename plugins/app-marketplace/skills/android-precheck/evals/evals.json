@@ -357,6 +357,51 @@
         "Should suggest running npx expo prebuild for complete native checks",
         "Should detect Firebase Analytics in dependencies for Data Safety"
       ]
+    },
+    {
+      "id": "android-eval-24-photo-video-permissions-manifest",
+      "name": "Detect READ_MEDIA_IMAGES and READ_MEDIA_VISUAL_USER_SELECTED as blockers",
+      "prompt": "Run Play Store precheck on this Android app",
+      "files": {
+        "android/app/src/main/AndroidManifest.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    package=\"com.example.app\">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.READ_MEDIA_IMAGES\" />\n    <uses-permission android:name=\"android.permission.READ_MEDIA_VISUAL_USER_SELECTED\" />\n    <application android:label=\"test_app\">\n        <activity android:name=\".MainActivity\" />\n    </application>\n</manifest>",
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag READ_MEDIA_IMAGES as BLOCKER — requires Photo & Video Permissions declaration",
+        "Must flag READ_MEDIA_VISUAL_USER_SELECTED as BLOCKER — requires Photo & Video Permissions declaration",
+        "Should direct user to Play Console → App content → Photo and video permissions",
+        "Should NOT treat these as mere warnings"
+      ]
+    },
+    {
+      "id": "android-eval-25-flutter-pubspec-image-picker",
+      "name": "Detect image_picker in Flutter pubspec.yaml as blocker (no android/ dir)",
+      "prompt": "Run Android precheck on my Flutter app",
+      "files": {
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0\ndependencies:\n  flutter:\n    sdk: flutter\n  image_picker: ^1.0.0\n  http: ^1.0.0"
+      },
+      "expectations": [
+        "Must flag image_picker as BLOCKER — will add READ_MEDIA_* permissions at build time",
+        "Should explain Photo & Video Permissions declaration is required in Play Console",
+        "Should detect Flutter project without android/ directory",
+        "Should NOT require android/app/src/main/AndroidManifest.xml to exist"
+      ]
+    },
+    {
+      "id": "android-eval-26-expo-media-library-plugin",
+      "name": "Detect expo-media-library plugin in Expo app.json as blocker (no android/ dir)",
+      "prompt": "Run Android precheck on my Expo app",
+      "files": {
+        "app.json": "{\n  \"expo\": {\n    \"name\": \"my-expo-app\",\n    \"slug\": \"my-expo-app\",\n    \"version\": \"1.0.0\",\n    \"android\": {\n      \"package\": \"com.example.myexpoapp\"\n    },\n    \"plugins\": [\n      \"expo-media-library\"\n    ]\n  }\n}",
+        "package.json": "{\n  \"name\": \"my-expo-app\",\n  \"dependencies\": {\n    \"expo\": \"~51.0.0\",\n    \"expo-media-library\": \"~16.0.0\"\n  }\n}"
+      },
+      "expectations": [
+        "Must flag expo-media-library as BLOCKER — will add READ_MEDIA_* permissions",
+        "Should explain Photo & Video Permissions declaration is required in Play Console",
+        "Should detect Expo project without android/ directory",
+        "Should NOT require android/app/src/main/AndroidManifest.xml to exist"
+      ]
     }
   ]
 }
