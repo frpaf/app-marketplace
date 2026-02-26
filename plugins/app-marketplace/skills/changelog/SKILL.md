@@ -11,25 +11,17 @@ allowed-tools: Bash, Read
 
 Generate release notes from git commit history for app store deployments.
 
-## Step 0 — Check Dependencies (run every time)
+## Step 0 — Check & Install Dependencies (run every time)
 
-Before doing anything else, verify that the required tools are installed:
+Before doing anything else, run the automated setup script. It detects the OS, checks each dependency, and installs whatever is missing:
 
 ```bash
-node --version && npm --version && git --version
+bash scripts/setup.sh
 ```
 
-**If Node.js/npm is missing**:
-- **macOS**: `brew install node` or download from https://nodejs.org/
-- **Windows**: Download from https://nodejs.org/ — the installer adds Node.js and npm to PATH
-- **Linux**: `sudo apt update && sudo apt install nodejs npm`
+This checks and auto-installs: Node.js, npm, git, and the store-deploy CLI.
 
-**If git is missing**:
-- **macOS**: `xcode-select --install` (installs git with Command Line Tools)
-- **Windows**: Download from https://git-scm.com/downloads
-- **Linux**: `sudo apt update && sudo apt install git`
-
-Do NOT proceed until all checks pass.
+Do NOT proceed until the setup script reports all dependencies are ready.
 
 ## Pre-flight: MANDATORY — Install or Update CLI
 

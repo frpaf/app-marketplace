@@ -34,26 +34,19 @@ Generate Play Store compliant 512x512 app icons from source images with automati
 
 ## Workflow
 
-### Step 0 — Check dependencies (run every time)
+### Step 0 — Check & Install Dependencies (run every time)
 
-Before doing anything else, verify that Python 3 and Pillow are installed:
+Before doing anything else, run the automated setup script. It detects the OS, checks each dependency, and installs whatever is missing:
 
 ```bash
-python3 --version && python3 -c "from PIL import Image; print('Pillow OK')"
+bash scripts/setup.sh
 ```
 
-**If Python 3 is missing**, guide the user to install it:
-- **macOS**: `brew install python` or download from https://www.python.org/downloads/
-- **Windows**: Download from https://www.python.org/downloads/ — check "Add Python to PATH" during install
-- **Linux**: `sudo apt update && sudo apt install python3 python3-pip`
+This checks and auto-installs: Python 3 and Pillow.
 
-**If Pillow is missing**, install it:
-```bash
-pip3 install Pillow
-```
-If permission error: `pip3 install --user Pillow`
+If any dependency fails to auto-install, the script will report it and the user must install manually.
 
-Re-run the check above after installation. Do NOT proceed until both dependencies are confirmed working.
+Do NOT proceed until the setup script reports all dependencies are ready.
 
 ### Step 1 — Inspect source image
 Read the source image to determine dimensions, format, and background color.

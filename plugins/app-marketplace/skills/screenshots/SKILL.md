@@ -37,41 +37,19 @@ You MUST execute all four phases in order. Do NOT stop after capturing screensho
 
 ## Workflow
 
-### Phase 0 — Check Dependencies (run every time)
+### Phase 0 — Check & Install Dependencies (run every time)
 
-Before doing anything else, verify that all required tools are installed:
+Before doing anything else, run the automated setup script. It detects the OS, checks each dependency, and installs whatever is missing:
 
 ```bash
-python3 --version && python3 -c "from PIL import Image; print('Pillow OK')" && which agent-device
+bash scripts/setup.sh
 ```
 
-**If Python 3 is missing**, guide the user to install it:
-- **macOS**: `brew install python` or download from https://www.python.org/downloads/
-- **Windows**: Download from https://www.python.org/downloads/ — check "Add Python to PATH" during install
-- **Linux**: `sudo apt update && sudo apt install python3 python3-pip`
+This checks and auto-installs: Node.js, Python 3, Pillow, agent-device, and the anthropic SDK (optional).
 
-**If Pillow is missing**:
-```bash
-pip3 install Pillow
-```
-If permission error: `pip3 install --user Pillow`
+If any dependency fails to auto-install, the script will report it and the user must install it manually. See `SETUP.md` for detailed manual instructions.
 
-**If `agent-device` is missing**:
-```bash
-npm install -g agent-device
-```
-Requires Node.js. If Node.js is not installed:
-- **macOS**: `brew install node` or download from https://nodejs.org/
-- **Windows**: Download from https://nodejs.org/ — the installer adds it to PATH
-- **Linux**: `sudo apt update && sudo apt install nodejs npm`
-
-**If using Claude API for text generation (optional)**, the `anthropic` SDK is needed:
-```bash
-pip3 install anthropic
-```
-And the `ANTHROPIC_API_KEY` environment variable must be set.
-
-Re-run the check after installation. Do NOT proceed until all required dependencies are confirmed working.
+Do NOT proceed until the setup script reports all dependencies are ready.
 
 ### Phase 1 — App Exploration
 
