@@ -301,18 +301,26 @@ resolve_so_package() {
 if [ ${#SO_FILES[@]} -gt 0 ]; then
     echo -e "  ${CYAN}ℹ️${NC}  ${#SO_FILES[@]} native .so file(s) found"
 
+    # Resolve readelf binary — macOS brew installs it as greadelf
+    READELF=""
     if command -v readelf &>/dev/null; then
+        READELF="readelf"
+    elif command -v greadelf &>/dev/null; then
+        READELF="greadelf"
+    fi
+
+    if [ -n "$READELF" ]; then
         # Associative arrays: package → list of misaligned libs, package → list of aligned libs
         declare -A MISALIGNED_BY_PKG
         declare -A ALIGNED_BY_PKG
         MISALIGNED_COUNT=0
         CHECKED=0
-        MAX_CHECK=100
+        MAX_CHECK=500
 
         for so_file in "${SO_FILES[@]}"; do
             [ $CHECKED -ge $MAX_CHECK ] && echo -e "     ${CYAN}ℹ️${NC}  (checked $MAX_CHECK of ${#SO_FILES[@]}, skipping rest)" && break
 
-            LOAD_ALIGN=$(readelf -l "$so_file" 2>/dev/null | grep -m1 "LOAD" | awk '{print $NF}')
+            LOAD_ALIGN=$($READELF -l "$so_file" 2>/dev/null | grep -m1 "LOAD" | awk '{print $NF}')
             if [ -n "$LOAD_ALIGN" ]; then
                 ALIGN_DEC=$((LOAD_ALIGN)) 2>/dev/null || ALIGN_DEC=0
                 PKG_NAME=$(resolve_so_package "$so_file")
@@ -377,8 +385,8 @@ if [ ${#SO_FILES[@]} -gt 0 ]; then
             [ ${#UNIQUE_NATIVE[@]} -gt 20 ] && echo "     ... and $((${#UNIQUE_NATIVE[@]} - 20)) more"
         fi
     else
-        echo "     readelf not available — cannot verify alignment automatically"
-        echo "     Install binutils: sudo apt install binutils (Linux) or brew install binutils (macOS)"
+        echo "     readelf/greadelf not available — cannot verify alignment automatically"
+        echo "     Install: brew install binutils (macOS) or sudo apt install binutils (Linux)"
         echo "     Then re-run to check: readelf -l <lib>.so | grep LOAD"
         WARNING_MSGS+=("Native .so files found — install readelf to verify 16 KB alignment"); ((WARNINGS++))
     fi
