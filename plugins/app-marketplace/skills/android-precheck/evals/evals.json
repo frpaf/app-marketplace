@@ -306,6 +306,7 @@
         "android/app/src/main/res/xml/network_security_config.xml": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<network-security-config>\n    <base-config cleartextTrafficPermitted=\"false\">\n        <trust-anchors>\n            <certificates src=\"system\" />\n        </trust-anchors>\n    </base-config>\n</network-security-config>",
         "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        minSdk 21\n        targetSdk 35\n        versionCode 1\n        versionName \"1.0.0\"\n    }\n    signingConfigs {\n        release {\n            keyAlias keystoreProperties['keyAlias']\n            keyPassword keystoreProperties['keyPassword']\n            storeFile file(keystoreProperties['storeFile'])\n            storePassword keystoreProperties['storePassword']\n        }\n    }\n    buildTypes {\n        release {\n            signingConfig signingConfigs.release\n            minifyEnabled true\n            shrinkResources true\n            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'\n        }\n    }\n}",
         "android/key.properties": "storePassword=secret\nkeyPassword=secret\nkeyAlias=upload\nstoreFile=upload-keystore.jks",
+        "android/gradle.properties": "org.gradle.jvmargs=-Xmx4096m\nandroid.useAndroidX=true\nandroid.config.pageSize=16384",
         ".gitignore": "build/\n.gradle/\nlocal.properties\nkey.properties\n*.jks\n",
         "lib/settings/delete_account.dart": "class AccountDeletion {\n  Future<void> deleteAccount() async {}\n}",
         "lib/legal/privacy.dart": "const privacyPolicyUrl = 'https://example.com/privacy';",
@@ -313,7 +314,7 @@
       },
       "expectations": [
         "Should pass all automated checks with no blockers",
-        "targetSdk 35, signing, R8, network security, foreground services all pass",
+        "targetSdk 35, signing, R8, network security, foreground services, 16 KB page size all pass",
         "Account deletion and privacy policy present — should pass",
         "Should show Play Console manual checklist",
         "Should indicate ready for submission pending manual checks"
@@ -401,6 +402,65 @@
         "Should explain Photo & Video Permissions declaration is required in Play Console",
         "Should detect Expo project without android/ directory",
         "Should NOT require android/app/src/main/AndroidManifest.xml to exist"
+      ]
+    },
+    {
+      "id": "android-eval-27-16kb-page-size-missing",
+      "name": "Detect missing 16 KB page size configuration",
+      "prompt": "Run Play Store precheck on this Android app",
+      "files": {
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        minSdk 21\n        targetSdk 35\n        versionCode 1\n        versionName \"1.0.0\"\n    }\n}",
+        "android/gradle.properties": "org.gradle.jvmargs=-Xmx4096m\nandroid.useAndroidX=true\nandroid.enableJetifier=true",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag missing android.config.pageSize=16384 as BLOCKER",
+        "Should explain this is required for Android 15+ devices since Nov 2025",
+        "Should recommend adding android.config.pageSize=16384 to gradle.properties"
+      ]
+    },
+    {
+      "id": "android-eval-28-16kb-page-size-configured",
+      "name": "Pass 16 KB page size when properly configured",
+      "prompt": "Run Play Store precheck",
+      "files": {
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        minSdk 21\n        targetSdk 35\n        versionCode 1\n        versionName \"1.0.0\"\n    }\n}",
+        "android/gradle.properties": "org.gradle.jvmargs=-Xmx4096m\nandroid.useAndroidX=true\nandroid.enableJetifier=true\nandroid.config.pageSize=16384",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Should pass 16 KB page size check — android.config.pageSize=16384 is set",
+        "Should NOT flag any blocker for page size"
+      ]
+    },
+    {
+      "id": "android-eval-29-16kb-no-gradle-properties",
+      "name": "Detect missing gradle.properties file entirely",
+      "prompt": "Run Play Store precheck",
+      "files": {
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        minSdk 21\n        targetSdk 35\n    }\n}",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0"
+      },
+      "expectations": [
+        "Must flag missing gradle.properties as BLOCKER for 16 KB page size",
+        "Should recommend creating android/gradle.properties with android.config.pageSize=16384"
+      ]
+    },
+    {
+      "id": "android-eval-30-16kb-native-so-check",
+      "name": "Detect native .so libraries from packages needing 16 KB alignment",
+      "prompt": "Run Play Store precheck — my app uses native plugins",
+      "files": {
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        minSdk 21\n        targetSdk 35\n    }\n}",
+        "android/gradle.properties": "org.gradle.jvmargs=-Xmx4096m\nandroid.useAndroidX=true\nandroid.config.pageSize=16384",
+        "pubspec.yaml": "name: test_app\nversion: 1.0.0\ndependencies:\n  flutter:\n    sdk: flutter\n  camera: ^0.10.0"
+      },
+      "expectations": [
+        "Should pass the gradle.properties pageSize check",
+        "Should scan for .so files in android/, node_modules/, and build directories",
+        "If readelf is available and .so files found, should check LOAD segment alignment",
+        "Should list packages that contain native libraries",
+        "Misaligned .so files (< 0x4000) should be flagged as BLOCKER"
       ]
     }
   ]

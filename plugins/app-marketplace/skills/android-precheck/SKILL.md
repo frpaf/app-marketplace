@@ -76,6 +76,8 @@ Without prebuild, the script checks `app.json` config only.
 | Missing signing configuration | Release builds | ⚠️ Warning |
 | key.properties not in .gitignore | Security | ⚠️ Warning |
 | R8/ProGuard not enabled for release | App quality & size | ⚠️ Warning |
+| Missing `android.config.pageSize=16384` | Required for Android 15+ (16 KB page sizes) since Nov 2025 | ❌ Blocker |
+| Native `.so` libraries without 16 KB alignment | Scans `android/`, `node_modules/`, build dirs; uses `readelf` to verify | ❌ Blocker |
 
 ### Permissions (AndroidManifest.xml)
 
@@ -276,6 +278,13 @@ The script will suggest running `npx expo prebuild` for complete checks.
 ▸ App Version Info
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃   16 KB MEMORY PAGE SIZE (required since Nov 2025)                       ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+▸ gradle.properties — android.config.pageSize
+▸ Native Library (.so) Page Alignment
+▸ Known Native Packages (dependency scan)
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃   PERMISSIONS AUDIT (AndroidManifest.xml)                                ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ▸ Restricted Permissions (SMS, Call Log — Declaration Form required)
@@ -363,6 +372,7 @@ The script will suggest running `npx expo prebuild` for complete checks.
                               FINAL VERDICT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   Build & Config:      X blockers   X warnings   X passed
+  16 KB Page Size:     X blockers   X warnings   X passed
   Permissions:         X blockers   X warnings   X passed
   Foreground Svc:      X blockers   X warnings   X passed
   Network Security:    X blockers   X warnings   X passed
@@ -401,6 +411,30 @@ android {
 ```
 
 For Flutter, ensure your `android/app/build.gradle` and `android/settings.gradle` reference the latest Gradle and AGP versions.
+
+### 16 KB Memory Page Size (Android 15+)
+
+Since Nov 2025, Google Play requires all apps targeting Android 15+ to support 16 KB memory page sizes.
+
+```properties
+# android/gradle.properties — add this line (requires AGP 8.5.1+)
+android.config.pageSize=16384
+```
+
+If your app includes native `.so` libraries (NDK, C/C++), ensure they are compiled with 16 KB page alignment:
+
+```bash
+# Verify alignment of a .so file (LOAD segment alignment should be 0x4000)
+readelf -l path/to/lib.so | grep LOAD
+
+# Recompile with 16 KB alignment (CMakeLists.txt)
+# Add to your CMakeLists.txt:
+# target_link_options(your_lib PRIVATE "-Wl,-z,max-page-size=16384")
+```
+
+For Flutter apps, update your `android/gradle.properties` — Flutter's Dart code doesn't need changes, but any native plugins may need recompilation.
+
+For Expo/React Native apps, update `android/gradle.properties` after running prebuild.
 
 ### Build AAB Instead of APK
 
@@ -640,5 +674,6 @@ These items cannot be validated automatically from code and must be completed in
 - [Permissions and Sensitive APIs Policy](https://support.google.com/googleplay/android-developer/answer/16558241)
 - [Play Store Screenshot Requirements](https://support.google.com/googleplay/android-developer/answer/9866151)
 - [Google Play SDK Index](https://developer.android.com/distribute/sdk-index)
+- [16 KB Page Size Support](https://developer.android.com/guide/practices/page-sizes)
 - [Play Policy Insights (Android Studio)](https://developer.android.com/studio/releases#policy-insights)
 - [Developer Policy Center](https://play.google/developer-content-policy/)

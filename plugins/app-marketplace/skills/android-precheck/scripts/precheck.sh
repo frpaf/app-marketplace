@@ -171,6 +171,175 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#                     16 KB MEMORY PAGE SIZE (Android 15+)
+# ═══════════════════════════════════════════════════════════════════════════════
+echo "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+echo "┃   16 KB MEMORY PAGE SIZE (required since Nov 2025)                        ┃"
+echo "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+echo ""
+
+echo "▸ gradle.properties — android.config.pageSize"
+GRADLE_PROPS="android/gradle.properties"
+if [ -d "android" ]; then
+    if [ -f "$GRADLE_PROPS" ]; then
+        if grep -qE "android\.config\.pageSize\s*=\s*16384" "$GRADLE_PROPS" 2>/dev/null; then
+            echo -e "  ${GREEN}✅${NC} android.config.pageSize=16384 set"; ((PASSED++))
+        else
+            echo -e "  ${RED}❌ BLOCKER: Missing android.config.pageSize=16384 in gradle.properties${NC}"
+            echo "     Required for Android 15+ (16 KB page size devices). Add to android/gradle.properties:"
+            echo "     android.config.pageSize=16384"
+            BLOCKER_MSGS+=("Missing android.config.pageSize=16384 — required for Android 15+"); ((BLOCKERS++))
+        fi
+    else
+        echo -e "  ${RED}❌ BLOCKER: No android/gradle.properties found — cannot verify 16 KB page size${NC}"
+        echo "     Create android/gradle.properties and add: android.config.pageSize=16384"
+        BLOCKER_MSGS+=("Missing gradle.properties — add android.config.pageSize=16384"); ((BLOCKERS++))
+    fi
+else
+    # No android/ directory — framework-specific guidance
+    if [ "$PROJECT_TYPE" = "expo" ]; then
+        echo -e "  ${YELLOW}⚠️  No android/ directory — run ${CYAN}npx expo prebuild --platform android${NC}${YELLOW} first${NC}"
+        echo "     Then add to android/gradle.properties: android.config.pageSize=16384"
+        WARNING_MSGS+=("Run expo prebuild, then add android.config.pageSize=16384"); ((WARNINGS++))
+    elif [ "$PROJECT_TYPE" = "react-native" ]; then
+        echo -e "  ${YELLOW}⚠️  No android/ directory found${NC}"
+        echo "     After generating android project, add to android/gradle.properties: android.config.pageSize=16384"
+        WARNING_MSGS+=("Generate android/ dir, then add android.config.pageSize=16384"); ((WARNINGS++))
+    elif [ "$PROJECT_TYPE" = "flutter" ]; then
+        echo -e "  ${YELLOW}⚠️  No android/ directory — run ${CYAN}flutter create . --platforms android${NC}${YELLOW} to regenerate${NC}"
+        echo "     Then add to android/gradle.properties: android.config.pageSize=16384"
+        WARNING_MSGS+=("Regenerate android/ dir, then add android.config.pageSize=16384"); ((WARNINGS++))
+    fi
+fi
+echo ""
+
+# Scan for native .so libraries across all relevant directories
+echo "▸ Native Library (.so) Page Alignment"
+SO_DIRS=()
+[ -d "android" ] && SO_DIRS+=("android")
+[ -d ".gradle" ] && SO_DIRS+=(".gradle")
+[ -d "build" ] && SO_DIRS+=("build")
+# Flutter plugin native libs
+[ -d ".dart_tool" ] && SO_DIRS+=(".dart_tool")
+# React Native / Expo native modules
+[ -d "node_modules" ] && SO_DIRS+=("node_modules")
+
+SO_FILES=()
+for so_dir in "${SO_DIRS[@]}"; do
+    while IFS= read -r so_file; do
+        SO_FILES+=("$so_file")
+    done < <(find "$so_dir" -name "*.so" -type f 2>/dev/null)
+done
+
+if [ ${#SO_FILES[@]} -gt 0 ]; then
+    echo -e "  ${CYAN}ℹ️${NC}  ${#SO_FILES[@]} native .so file(s) found"
+    # If readelf is available, actually check alignment
+    if command -v readelf &>/dev/null; then
+        MISALIGNED=()
+        CHECKED=0
+        for so_file in "${SO_FILES[@]}"; do
+            # Only check a reasonable number to avoid long runtimes
+            [ $CHECKED -ge 50 ] && echo -e "     ${CYAN}ℹ️${NC}  (checked 50 of ${#SO_FILES[@]}, skipping rest)" && break
+            LOAD_ALIGN=$(readelf -l "$so_file" 2>/dev/null | grep -m1 "LOAD" | awk '{print $NF}')
+            if [ -n "$LOAD_ALIGN" ]; then
+                # Convert hex alignment to decimal and check >= 16384 (0x4000)
+                ALIGN_DEC=$((LOAD_ALIGN))
+                if [ "$ALIGN_DEC" -lt 16384 ] 2>/dev/null; then
+                    MISALIGNED+=("$so_file (align=$LOAD_ALIGN)")
+                fi
+            fi
+            ((CHECKED++))
+        done
+        if [ ${#MISALIGNED[@]} -gt 0 ]; then
+            echo -e "  ${RED}❌ BLOCKER: ${#MISALIGNED[@]} .so file(s) NOT aligned to 16 KB:${NC}"
+            for mf in "${MISALIGNED[@]:0:10}"; do
+                echo -e "     • $mf"
+            done
+            [ ${#MISALIGNED[@]} -gt 10 ] && echo "     ... and $((${#MISALIGNED[@]} - 10)) more"
+            echo "     Rebuild these libraries with: -Wl,-z,max-page-size=16384"
+            BLOCKER_MSGS+=("${#MISALIGNED[@]} native .so file(s) not aligned to 16 KB pages"); ((BLOCKERS++))
+        else
+            echo -e "  ${GREEN}✅${NC} All checked .so files have 16 KB page alignment"; ((PASSED++))
+        fi
+    else
+        echo "     readelf not available — cannot verify alignment automatically"
+        echo "     Install binutils and re-run, or manually check: readelf -l <lib>.so | grep LOAD"
+        WARNING_MSGS+=("Native .so files found — install readelf to verify 16 KB alignment"); ((WARNINGS++))
+    fi
+
+    # List packages with native libs for awareness
+    SO_PACKAGES=()
+    for so_file in "${SO_FILES[@]}"; do
+        if [[ "$so_file" == node_modules/* ]]; then
+            pkg=$(echo "$so_file" | sed 's|node_modules/||' | cut -d'/' -f1-2 | sed 's|/.*||')
+            [[ "$pkg" == @* ]] && pkg=$(echo "$so_file" | sed 's|node_modules/||' | cut -d'/' -f1-2)
+        elif [[ "$so_file" == *".pub-cache"* ]] || [[ "$so_file" == *"dart_tool"* ]]; then
+            pkg=$(echo "$so_file" | grep -oP '[^/]+(?=/android|/jni|/src)' | head -1)
+        else
+            pkg=$(echo "$so_file" | sed 's|.*/jni/\|.*/lib/||;s|/.*||')
+        fi
+        [ -n "$pkg" ] && SO_PACKAGES+=("$pkg")
+    done
+    # Deduplicate
+    if [ ${#SO_PACKAGES[@]} -gt 0 ]; then
+        UNIQUE_PKGS=($(printf '%s\n' "${SO_PACKAGES[@]}" | sort -u))
+        echo -e "  ${CYAN}ℹ️${NC}  Packages with native libraries:"
+        for pkg in "${UNIQUE_PKGS[@]:0:15}"; do
+            echo "     • $pkg"
+        done
+        [ ${#UNIQUE_PKGS[@]} -gt 15 ] && echo "     ... and $((${#UNIQUE_PKGS[@]} - 15)) more"
+    fi
+else
+    echo -e "  ${GREEN}✅${NC} No native .so libraries found"; ((PASSED++))
+fi
+echo ""
+
+# Known packages with native .so that historically had 16 KB issues
+echo "▸ Known Native Packages (dependency scan)"
+PAGE16_NATIVE_PKGS_FOUND=false
+if [ "$PROJECT_TYPE" = "flutter" ] && [ -f "pubspec.yaml" ]; then
+    # Flutter packages known to include native .so libraries
+    for pkg in camera video_player webview_flutter google_maps_flutter flutter_local_notifications \
+               path_provider sqflite shared_preferences image_picker file_picker \
+               geolocator flutter_blue_plus flutter_nfc_kit audioplayers \
+               flutter_tts speech_to_text local_auth pdf_render \
+               realm firebase_core firebase_auth firebase_messaging flutter_webrtc; do
+        if grep -qE "^\s+$pkg:" pubspec.yaml 2>/dev/null; then
+            echo -e "  ${CYAN}ℹ️${NC}  ${BOLD}$pkg${NC} — includes native code, ensure updated for 16 KB support"
+            PAGE16_NATIVE_PKGS_FOUND=true
+        fi
+    done
+elif [ "$PROJECT_TYPE" = "expo" ] || [ "$PROJECT_TYPE" = "react-native" ]; then
+    PKG_JSON="package.json"
+    if [ -f "$PKG_JSON" ]; then
+        # RN/Expo packages known to include native .so libraries
+        for pkg in react-native-camera react-native-video react-native-webview react-native-maps \
+                   react-native-reanimated react-native-gesture-handler react-native-screens \
+                   react-native-svg react-native-fast-image react-native-firebase \
+                   @react-native-firebase/app @react-native-firebase/auth @react-native-firebase/messaging \
+                   react-native-ble-plx react-native-nfc-manager react-native-audio-api \
+                   react-native-tts @react-native-voice/voice react-native-local-authenticate \
+                   react-native-pdf realm expo-camera expo-av expo-location \
+                   expo-sensors expo-local-authentication expo-file-system expo-sqlite \
+                   expo-image expo-gl react-native-webrtc lottie-react-native; do
+            if grep -qE "\"$pkg\"" "$PKG_JSON" 2>/dev/null; then
+                echo -e "  ${CYAN}ℹ️${NC}  ${BOLD}$pkg${NC} — includes native code, ensure updated for 16 KB support"
+                PAGE16_NATIVE_PKGS_FOUND=true
+            fi
+        done
+    fi
+fi
+if [ "$PAGE16_NATIVE_PKGS_FOUND" = false ]; then
+    echo -e "  ${GREEN}✅${NC} No known native packages with 16 KB concerns detected"; ((PASSED++))
+else
+    echo ""
+    echo -e "  ${YELLOW}⚠️  Update packages above to their latest versions for 16 KB support${NC}"
+    echo "     Most recent versions of popular packages already support 16 KB page sizes"
+    WARNING_MSGS+=("Native packages detected — update to latest versions for 16 KB support"); ((WARNINGS++))
+fi
+echo ""
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #                        PERMISSIONS AUDIT
 # ═══════════════════════════════════════════════════════════════════════════════
 if [ -n "$MANIFEST" ]; then
