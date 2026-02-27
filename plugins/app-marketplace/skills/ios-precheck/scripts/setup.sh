@@ -97,20 +97,20 @@ check_or_install "Bash" "bash --version" install_bash || true
 # Check precheck script
 printf "  Checking %-20s" "precheck-ios.sh..."
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-if [ -f "$SCRIPT_DIR/scripts/precheck.sh" ]; then
+if [ -f "$SCRIPT_DIR/scripts/precheck-ios.sh" ]; then
     echo -e "${GREEN}✓${NC} found"
     ((passed++))
 
     # Ensure executable
-    if [ ! -x "$SCRIPT_DIR/scripts/precheck.sh" ]; then
-        chmod +x "$SCRIPT_DIR/scripts/precheck.sh"
+    if [ ! -x "$SCRIPT_DIR/scripts/precheck-ios.sh" ]; then
+        chmod +x "$SCRIPT_DIR/scripts/precheck-ios.sh"
         echo -e "    Made executable"
     fi
 else
     echo -e "${RED}✗ not found${NC}"
-    echo -e "    Expected at: $SCRIPT_DIR/scripts/precheck.sh"
+    echo -e "    Expected at: $SCRIPT_DIR/scripts/precheck-ios.sh"
     ((failed++))
-    failures+=("precheck.sh")
+    failures+=("precheck-ios.sh")
 fi
 
 # --- Summary ---
