@@ -309,6 +309,34 @@ if [ ${#SO_FILES[@]} -gt 0 ]; then
         READELF="greadelf"
     fi
 
+    # Auto-install binutils if readelf is missing
+    if [ -z "$READELF" ]; then
+        echo -e "  ${CYAN}ℹ️${NC}  readelf not found — installing binutils..."
+        case "$(uname -s)" in
+            Darwin*)
+                if command -v brew &>/dev/null; then
+                    brew install binutils 2>/dev/null && READELF="greadelf"
+                else
+                    echo -e "  ${YELLOW}⚠️${NC}  Homebrew not found — install binutils manually: brew install binutils"
+                fi
+                ;;
+            Linux*)
+                if command -v apt-get &>/dev/null; then
+                    sudo apt-get update -qq && sudo apt-get install -y -qq binutils 2>/dev/null && READELF="readelf"
+                elif command -v dnf &>/dev/null; then
+                    sudo dnf install -y binutils 2>/dev/null && READELF="readelf"
+                elif command -v yum &>/dev/null; then
+                    sudo yum install -y binutils 2>/dev/null && READELF="readelf"
+                elif command -v pacman &>/dev/null; then
+                    sudo pacman -S --noconfirm binutils 2>/dev/null && READELF="readelf"
+                else
+                    echo -e "  ${YELLOW}⚠️${NC}  Could not detect package manager — install binutils manually"
+                fi
+                ;;
+        esac
+        [ -n "$READELF" ] && echo -e "  ${GREEN}✅${NC} binutils installed — using $READELF"
+    fi
+
     if [ -n "$READELF" ]; then
         # Associative arrays: package → list of misaligned libs, package → list of aligned libs
         declare -A MISALIGNED_BY_PKG

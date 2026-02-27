@@ -94,6 +94,27 @@ echo ""
 
 check_or_install "Bash" "bash --version" install_bash || true
 
+install_binutils() {
+    case "$OS" in
+        mac)    brew install binutils ;;
+        linux)
+            case "$LINUX_PKG" in
+                apt)    sudo apt-get update -qq && sudo apt-get install -y -qq binutils ;;
+                dnf)    sudo dnf install -y binutils ;;
+                yum)    sudo yum install -y binutils ;;
+                pacman) sudo pacman -S --noconfirm binutils ;;
+                *)      return 1 ;;
+            esac ;;
+        *) return 1 ;;
+    esac
+}
+
+check_readelf() {
+    command -v readelf &>/dev/null || command -v greadelf &>/dev/null
+}
+
+check_or_install "readelf (binutils)" check_readelf install_binutils || true
+
 # Check precheck script
 printf "  Checking %-20s" "precheck-android.sh..."
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
