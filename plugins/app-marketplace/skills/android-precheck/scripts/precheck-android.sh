@@ -178,299 +178,79 @@ echo "┃   16 KB MEMORY PAGE SIZE (required since Nov 2025)                    
 echo "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
 echo ""
 
+# ── Check 1: gradle.properties config ──
 echo "▸ gradle.properties — android.config.pageSize"
 GRADLE_PROPS="android/gradle.properties"
 if [ -d "android" ]; then
-    if [ -f "$GRADLE_PROPS" ]; then
-        if grep -qE "android\.config\.pageSize\s*=\s*16384" "$GRADLE_PROPS" 2>/dev/null; then
-            echo -e "  ${GREEN}✅${NC} android.config.pageSize=16384 set"; ((PASSED++))
-        else
-            echo -e "  ${RED}❌ BLOCKER: Missing android.config.pageSize=16384 in gradle.properties${NC}"
-            echo "     Required for Android 15+ (16 KB page size devices). Add to android/gradle.properties:"
-            echo "     android.config.pageSize=16384"
-            BLOCKER_MSGS+=("Missing android.config.pageSize=16384 — required for Android 15+"); ((BLOCKERS++))
-        fi
+    if [ -f "$GRADLE_PROPS" ] && grep -qE "android\.config\.pageSize\s*=\s*16384" "$GRADLE_PROPS" 2>/dev/null; then
+        echo -e "  ${GREEN}✅${NC} android.config.pageSize=16384 set"; ((PASSED++))
     else
-        echo -e "  ${RED}❌ BLOCKER: No android/gradle.properties found — cannot verify 16 KB page size${NC}"
-        echo "     Create android/gradle.properties and add: android.config.pageSize=16384"
-        BLOCKER_MSGS+=("Missing gradle.properties — add android.config.pageSize=16384"); ((BLOCKERS++))
+        echo -e "  ${RED}❌ BLOCKER: Missing android.config.pageSize=16384${NC}"
+        echo "     Add to android/gradle.properties: android.config.pageSize=16384"
+        BLOCKER_MSGS+=("Missing android.config.pageSize=16384 — required for Android 15+"); ((BLOCKERS++))
     fi
 else
-    # No android/ directory — framework-specific guidance
-    if [ "$PROJECT_TYPE" = "expo" ]; then
-        echo -e "  ${YELLOW}⚠️  No android/ directory — run ${CYAN}npx expo prebuild --platform android${NC}${YELLOW} first${NC}"
-        echo "     Then add to android/gradle.properties: android.config.pageSize=16384"
-        WARNING_MSGS+=("Run expo prebuild, then add android.config.pageSize=16384"); ((WARNINGS++))
-    elif [ "$PROJECT_TYPE" = "react-native" ]; then
-        echo -e "  ${YELLOW}⚠️  No android/ directory found${NC}"
-        echo "     After generating android project, add to android/gradle.properties: android.config.pageSize=16384"
-        WARNING_MSGS+=("Generate android/ dir, then add android.config.pageSize=16384"); ((WARNINGS++))
-    elif [ "$PROJECT_TYPE" = "flutter" ]; then
-        echo -e "  ${YELLOW}⚠️  No android/ directory — run ${CYAN}flutter create . --platforms android${NC}${YELLOW} to regenerate${NC}"
-        echo "     Then add to android/gradle.properties: android.config.pageSize=16384"
-        WARNING_MSGS+=("Regenerate android/ dir, then add android.config.pageSize=16384"); ((WARNINGS++))
-    fi
+    case "$PROJECT_TYPE" in
+        expo)           echo -e "  ${YELLOW}⚠️  No android/ — run ${CYAN}npx expo prebuild --platform android${NC}${YELLOW}, then add pageSize=16384${NC}" ;;
+        react-native)   echo -e "  ${YELLOW}⚠️  No android/ — generate it, then add android.config.pageSize=16384${NC}" ;;
+        flutter)        echo -e "  ${YELLOW}⚠️  No android/ — run ${CYAN}flutter create . --platforms android${NC}${YELLOW}, then add pageSize=16384${NC}" ;;
+    esac
+    WARNING_MSGS+=("No android/ dir — add android.config.pageSize=16384 after generating"); ((WARNINGS++))
 fi
 echo ""
 
-# Scan for native .so libraries across all relevant directories
+# ── Check 2: Native .so alignment via readelf ──
 echo "▸ Native Library (.so) Page Alignment"
-SO_DIRS=()
-[ -d "android" ] && SO_DIRS+=("android")
-[ -d ".gradle" ] && SO_DIRS+=(".gradle")
-[ -d "build" ] && SO_DIRS+=("build")
-# Flutter plugin native libs
-[ -d ".dart_tool" ] && SO_DIRS+=(".dart_tool")
-# React Native / Expo native modules
-[ -d "node_modules" ] && SO_DIRS+=("node_modules")
 
+# Find all .so files across relevant directories
 SO_FILES=()
-for so_dir in "${SO_DIRS[@]}"; do
-    while IFS= read -r so_file; do
-        SO_FILES+=("$so_file")
-    done < <(find "$so_dir" -name "*.so" -type f 2>/dev/null)
+for so_dir in android .gradle build .dart_tool node_modules; do
+    [ -d "$so_dir" ] || continue
+    while IFS= read -r f; do SO_FILES+=("$f"); done < <(find "$so_dir" -name "*.so" -type f 2>/dev/null)
 done
 
-# ── Helper: resolve .so path → owning 3rd-party package name ──
-resolve_so_package() {
-    local so_path="$1"
-
-    # node_modules — RN / Expo packages
-    if [[ "$so_path" == node_modules/* ]]; then
-        local rel="${so_path#node_modules/}"
-        if [[ "$rel" == @* ]]; then
-            # scoped package: @scope/name
-            echo "$rel" | cut -d'/' -f1-2
-        else
-            echo "$rel" | cut -d'/' -f1
-        fi
-        return
-    fi
-
-    # Flutter .pub-cache or .dart_tool plugin builds
-    if [[ "$so_path" == *".pub-cache"* ]]; then
-        echo "$so_path" | grep -oP '\.pub-cache/hosted/[^/]+/\K[^-]+' | head -1
-        return
-    fi
-    if [[ "$so_path" == *".dart_tool"* ]] || [[ "$so_path" == *"dart_tool"* ]]; then
-        echo "$so_path" | grep -oP '\.dart_tool/flutter_build/[^/]+/\K[^/]+' | head -1 || \
-        echo "$so_path" | grep -oP 'dart_tool/[^/]+/\K[^/]+' | head -1
-        return
-    fi
-
-    # android/app/build/intermediates — from gradle dependency
-    if [[ "$so_path" == android/app/build/* ]] || [[ "$so_path" == build/* ]]; then
-        # Try to extract library name from the .so filename
-        local libname
-        libname=$(basename "$so_path" .so | sed 's/^lib//')
-        echo "(build) $libname"
-        return
-    fi
-
-    # android/ tree — could be a local JNI or an AAR exploded lib
-    if [[ "$so_path" == android/* ]]; then
-        # Check if inside a subproject (e.g. android/react-native-maps/...)
-        local sub
-        sub=$(echo "$so_path" | sed 's|^android/||' | cut -d'/' -f1)
-        if [ "$sub" != "app" ]; then
-            echo "$sub"
-            return
-        fi
-        # Inside android/app — extract lib name
-        local libname
-        libname=$(basename "$so_path" .so | sed 's/^lib//')
-        echo "(app) $libname"
-        return
-    fi
-
-    # .gradle cache — exploded AARs
-    if [[ "$so_path" == .gradle/* ]]; then
-        local aar_name
-        aar_name=$(echo "$so_path" | grep -oP 'transforms/[^/]+/[^/]+/\K[^/]+' | head -1)
-        [ -n "$aar_name" ] && echo "(gradle) $aar_name" && return
-        local libname
-        libname=$(basename "$so_path" .so | sed 's/^lib//')
-        echo "(gradle) $libname"
-        return
-    fi
-
-    # Fallback: just the .so filename
-    basename "$so_path" .so | sed 's/^lib//'
-}
-
-if [ ${#SO_FILES[@]} -gt 0 ]; then
+if [ ${#SO_FILES[@]} -eq 0 ]; then
+    echo -e "  ${GREEN}✅${NC} No native .so libraries found"; ((PASSED++))
+else
     echo -e "  ${CYAN}ℹ️${NC}  ${#SO_FILES[@]} native .so file(s) found"
 
-    # Resolve readelf binary — macOS brew installs it as greadelf
+    # Detect readelf (Linux) or greadelf (macOS via brew)
     READELF=""
-    if command -v readelf &>/dev/null; then
-        READELF="readelf"
-    elif command -v greadelf &>/dev/null; then
-        READELF="greadelf"
-    fi
+    command -v readelf &>/dev/null && READELF="readelf"
+    [ -z "$READELF" ] && command -v greadelf &>/dev/null && READELF="greadelf"
 
-    # Auto-install binutils if readelf is missing
     if [ -z "$READELF" ]; then
-        echo -e "  ${CYAN}ℹ️${NC}  readelf not found — installing binutils..."
-        case "$(uname -s)" in
-            Darwin*)
-                if command -v brew &>/dev/null; then
-                    brew install binutils 2>/dev/null && READELF="greadelf"
-                else
-                    echo -e "  ${YELLOW}⚠️${NC}  Homebrew not found — install binutils manually: brew install binutils"
-                fi
-                ;;
-            Linux*)
-                if command -v apt-get &>/dev/null; then
-                    sudo apt-get update -qq && sudo apt-get install -y -qq binutils 2>/dev/null && READELF="readelf"
-                elif command -v dnf &>/dev/null; then
-                    sudo dnf install -y binutils 2>/dev/null && READELF="readelf"
-                elif command -v yum &>/dev/null; then
-                    sudo yum install -y binutils 2>/dev/null && READELF="readelf"
-                elif command -v pacman &>/dev/null; then
-                    sudo pacman -S --noconfirm binutils 2>/dev/null && READELF="readelf"
-                else
-                    echo -e "  ${YELLOW}⚠️${NC}  Could not detect package manager — install binutils manually"
-                fi
-                ;;
-        esac
-        [ -n "$READELF" ] && echo -e "  ${GREEN}✅${NC} binutils installed — using $READELF"
-    fi
-
-    if [ -n "$READELF" ]; then
-        # Use temp files instead of associative arrays (bash 3.x compat)
-        TMPDIR_SO=$(mktemp -d)
-        MISALIGNED_LOG="$TMPDIR_SO/misaligned.log"   # format: PKG_NAME<TAB>LIB_NAME (ALIGN)
-        ALIGNED_LOG="$TMPDIR_SO/aligned.log"         # format: PKG_NAME<TAB>LIB_NAME
-        : > "$MISALIGNED_LOG"
-        : > "$ALIGNED_LOG"
-        MISALIGNED_COUNT=0
+        echo -e "  ${YELLOW}⚠️${NC}  readelf not available — install binutils to verify alignment"
+        echo "     macOS: brew install binutils | Linux: sudo apt install binutils"
+        WARNING_MSGS+=("Install readelf/binutils to verify 16 KB .so alignment"); ((WARNINGS++))
+    else
+        MISALIGNED=()
         CHECKED=0
         MAX_CHECK=500
 
         for so_file in "${SO_FILES[@]}"; do
-            [ $CHECKED -ge $MAX_CHECK ] && echo -e "     ${CYAN}ℹ️${NC}  (checked $MAX_CHECK of ${#SO_FILES[@]}, skipping rest)" && break
-
+            [ $CHECKED -ge $MAX_CHECK ] && echo -e "  ${CYAN}ℹ️${NC}  Checked $MAX_CHECK of ${#SO_FILES[@]} — run readelf manually for the rest" && break
             LOAD_ALIGN=$($READELF -l "$so_file" 2>/dev/null | grep -m1 "LOAD" | awk '{print $NF}')
             if [ -n "$LOAD_ALIGN" ]; then
                 ALIGN_DEC=$((LOAD_ALIGN)) 2>/dev/null || ALIGN_DEC=0
-                PKG_NAME=$(resolve_so_package "$so_file")
-                [ -z "$PKG_NAME" ] && PKG_NAME="(unknown)"
-                LIB_NAME=$(basename "$so_file")
-
-                if [ "$ALIGN_DEC" -lt 16384 ]; then
-                    printf '%s\t%s (%s)\n' "$PKG_NAME" "$LIB_NAME" "$LOAD_ALIGN" >> "$MISALIGNED_LOG"
-                    ((MISALIGNED_COUNT++))
-                else
-                    printf '%s\t%s\n' "$PKG_NAME" "$LIB_NAME" >> "$ALIGNED_LOG"
-                fi
+                [ "$ALIGN_DEC" -lt 16384 ] && MISALIGNED+=("$so_file ($LOAD_ALIGN)")
             fi
             ((CHECKED++))
         done
 
-        if [ $MISALIGNED_COUNT -gt 0 ]; then
-            MISALIGNED_PKG_COUNT=$(cut -f1 "$MISALIGNED_LOG" | sort -u | wc -l | tr -d ' ')
-            echo -e "  ${RED}❌ BLOCKER: $MISALIGNED_COUNT .so file(s) NOT aligned to 16 KB${NC}"
-            echo ""
-            echo -e "  ${RED}${BOLD}  3rd-Party Packages Causing 16 KB Failures:${NC}"
-            echo -e "  ┌──────────────────────────────────────────────────────────────────┐"
-
-            PKG_COUNT=0
-            cut -f1 "$MISALIGNED_LOG" | sort -u | while IFS= read -r pkg; do
-                PKG_COUNT=$((PKG_COUNT + 1))
-                [ $PKG_COUNT -gt 15 ] && echo -e "  │  ... and more (run with readelf manually)                     │" && break
-                echo -e "  │  ${RED}✗${NC} ${BOLD}$pkg${NC}"
-                grep "^${pkg}	" "$MISALIGNED_LOG" | cut -f2 | while IFS= read -r lib_entry; do
-                    echo -e "  │      $lib_entry"
-                done
+        if [ ${#MISALIGNED[@]} -gt 0 ]; then
+            echo -e "  ${RED}❌ BLOCKER: ${#MISALIGNED[@]} .so file(s) NOT aligned to 16 KB${NC}"
+            for entry in "${MISALIGNED[@]:0:15}"; do
+                echo "     $entry"
             done
-            echo -e "  └──────────────────────────────────────────────────────────────────┘"
-            echo ""
-            echo -e "  ${BOLD}How to fix:${NC}"
-            echo "     1. Update each package to its latest version"
-            echo "     2. Rebuild and re-run this check"
-            echo "     3. If still failing, file an issue on the package's GitHub repo"
-            echo "     4. For packages you own: recompile with -Wl,-z,max-page-size=16384"
-            BLOCKER_MSGS+=("$MISALIGNED_COUNT native .so file(s) not 16 KB aligned — from $MISALIGNED_PKG_COUNT package(s)"); ((BLOCKERS++))
+            [ ${#MISALIGNED[@]} -gt 15 ] && echo "     ... and $((${#MISALIGNED[@]} - 15)) more"
+            echo "     Update the owning packages, rebuild, and re-run this check"
+            echo "     For libs you own: recompile with -Wl,-z,max-page-size=16384"
+            BLOCKER_MSGS+=("${#MISALIGNED[@]} native .so file(s) not 16 KB aligned — update packages and rebuild"); ((BLOCKERS++))
         else
             echo -e "  ${GREEN}✅${NC} All $CHECKED checked .so files have 16 KB page alignment"; ((PASSED++))
         fi
-
-        # Always list packages with native libs (aligned or not) for awareness
-        ALL_PKGS_FILE="$TMPDIR_SO/all_pkgs.txt"
-        cut -f1 "$MISALIGNED_LOG" >> "$ALL_PKGS_FILE" 2>/dev/null
-        cut -f1 "$ALIGNED_LOG" >> "$ALL_PKGS_FILE" 2>/dev/null
-        if [ -s "$ALL_PKGS_FILE" ]; then
-            UNIQUE_COUNT=$(sort -u "$ALL_PKGS_FILE" | wc -l | tr -d ' ')
-            echo ""
-            echo -e "  ${CYAN}ℹ️${NC}  All packages with native libraries ($UNIQUE_COUNT):"
-            PKG_SHOWN=0
-            sort -u "$ALL_PKGS_FILE" | while IFS= read -r pkg; do
-                PKG_SHOWN=$((PKG_SHOWN + 1))
-                [ $PKG_SHOWN -gt 20 ] && echo "     ... and $((UNIQUE_COUNT - 20)) more" && break
-                if grep -q "^${pkg}	" "$MISALIGNED_LOG" 2>/dev/null; then
-                    echo -e "     ${RED}✗${NC} $pkg"
-                else
-                    echo -e "     ${GREEN}✓${NC} $pkg"
-                fi
-            done
-        fi
-
-        # Cleanup temp files
-        rm -rf "$TMPDIR_SO"
-    else
-        echo "     readelf/greadelf not available — cannot verify alignment automatically"
-        echo "     Install: brew install binutils (macOS) or sudo apt install binutils (Linux)"
-        echo "     Then re-run to check: readelf -l <lib>.so | grep LOAD"
-        WARNING_MSGS+=("Native .so files found — install readelf to verify 16 KB alignment"); ((WARNINGS++))
     fi
-else
-    echo -e "  ${GREEN}✅${NC} No native .so libraries found"; ((PASSED++))
-fi
-echo ""
-
-# Known packages with native .so that historically had 16 KB issues
-echo "▸ Known Native Packages (dependency scan)"
-PAGE16_NATIVE_PKGS_FOUND=false
-if [ "$PROJECT_TYPE" = "flutter" ] && [ -f "pubspec.yaml" ]; then
-    # Flutter packages known to include native .so libraries
-    for pkg in camera video_player webview_flutter google_maps_flutter flutter_local_notifications \
-               path_provider sqflite shared_preferences image_picker file_picker \
-               geolocator flutter_blue_plus flutter_nfc_kit audioplayers \
-               flutter_tts speech_to_text local_auth pdf_render \
-               realm firebase_core firebase_auth firebase_messaging flutter_webrtc; do
-        if grep -qE "^\s+$pkg:" pubspec.yaml 2>/dev/null; then
-            echo -e "  ${CYAN}ℹ️${NC}  ${BOLD}$pkg${NC} — includes native code, ensure updated for 16 KB support"
-            PAGE16_NATIVE_PKGS_FOUND=true
-        fi
-    done
-elif [ "$PROJECT_TYPE" = "expo" ] || [ "$PROJECT_TYPE" = "react-native" ]; then
-    PKG_JSON="package.json"
-    if [ -f "$PKG_JSON" ]; then
-        # RN/Expo packages known to include native .so libraries
-        for pkg in react-native-camera react-native-video react-native-webview react-native-maps \
-                   react-native-reanimated react-native-gesture-handler react-native-screens \
-                   react-native-svg react-native-fast-image react-native-firebase \
-                   @react-native-firebase/app @react-native-firebase/auth @react-native-firebase/messaging \
-                   react-native-ble-plx react-native-nfc-manager react-native-audio-api \
-                   react-native-tts @react-native-voice/voice react-native-local-authenticate \
-                   react-native-pdf realm expo-camera expo-av expo-location \
-                   expo-sensors expo-local-authentication expo-file-system expo-sqlite \
-                   expo-image expo-gl react-native-webrtc lottie-react-native; do
-            if grep -qE "\"$pkg\"" "$PKG_JSON" 2>/dev/null; then
-                echo -e "  ${CYAN}ℹ️${NC}  ${BOLD}$pkg${NC} — includes native code, ensure updated for 16 KB support"
-                PAGE16_NATIVE_PKGS_FOUND=true
-            fi
-        done
-    fi
-fi
-if [ "$PAGE16_NATIVE_PKGS_FOUND" = false ]; then
-    echo -e "  ${GREEN}✅${NC} No known native packages with 16 KB concerns detected"; ((PASSED++))
-else
-    echo ""
-    echo -e "  ${YELLOW}⚠️  Update packages above to their latest versions for 16 KB support${NC}"
-    echo "     Most recent versions of popular packages already support 16 KB page sizes"
-    WARNING_MSGS+=("Native packages detected — update to latest versions for 16 KB support"); ((WARNINGS++))
 fi
 echo ""
 
