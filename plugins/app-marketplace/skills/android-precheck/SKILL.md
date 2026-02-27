@@ -77,7 +77,7 @@ Without prebuild, the script checks `app.json` config only.
 | key.properties not in .gitignore | Security | ⚠️ Warning |
 | R8/ProGuard not enabled for release | App quality & size | ⚠️ Warning |
 | Missing `android.config.pageSize=16384` | Required for Android 15+ (16 KB page sizes) since Nov 2025 | ❌ Blocker |
-| Native `.so` libraries without 16 KB alignment | Scans `android/`, `node_modules/`, build dirs; uses `readelf` to verify | ❌ Blocker |
+| Native `.so` libraries without 16 KB alignment | Scans `android/`, `node_modules/`, build dirs; uses `readelf` to verify and **traces each failure back to its owning 3rd-party package** | ❌ Blocker |
 
 ### Permissions (AndroidManifest.xml)
 
@@ -282,6 +282,17 @@ The script will suggest running `npx expo prebuild` for complete checks.
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ▸ gradle.properties — android.config.pageSize
 ▸ Native Library (.so) Page Alignment
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  ✗ react-native-fast-image                                     │
+  │      libRNFastImage.so (0x1000)                                │
+  │  ✗ @react-native-firebase/app                                  │
+  │      libfirebase.so (0x1000)                                   │
+  └──────────────────────────────────────────────────────────────────┘
+  All packages with native libraries:
+     ✗ react-native-fast-image
+     ✗ @react-native-firebase/app
+     ✓ react-native-reanimated
+     ✓ hermes-engine
 ▸ Known Native Packages (dependency scan)
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓

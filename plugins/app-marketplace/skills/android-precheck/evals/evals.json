@@ -462,6 +462,25 @@
         "Should list packages that contain native libraries",
         "Misaligned .so files (< 0x4000) should be flagged as BLOCKER"
       ]
+    },
+    {
+      "id": "android-eval-31-16kb-3rdparty-trace",
+      "name": "Trace misaligned .so files back to owning 3rd-party packages",
+      "prompt": "Run Play Store precheck — I need to know which packages are failing 16 KB alignment",
+      "files": {
+        "android/app/build.gradle": "android {\n    compileSdk 35\n    defaultConfig {\n        applicationId \"com.example.app\"\n        minSdk 21\n        targetSdk 35\n    }\n}",
+        "android/gradle.properties": "org.gradle.jvmargs=-Xmx4096m\nandroid.useAndroidX=true\nandroid.config.pageSize=16384",
+        "package.json": "{\n  \"name\": \"my-rn-app\",\n  \"dependencies\": {\n    \"react-native\": \"0.81.5\",\n    \"react-native-fast-image\": \"^8.6.0\",\n    \"@react-native-firebase/app\": \"^18.0.0\",\n    \"react-native-reanimated\": \"^3.10.0\"\n  }\n}"
+      },
+      "expectations": [
+        "Should pass gradle.properties pageSize check",
+        "When misaligned .so files are found, must group them by owning package name",
+        "Must show package names like react-native-fast-image or @react-native-firebase/app — not raw file paths",
+        "Should display a structured table/box showing which packages failed",
+        "Should show ✗/✓ status per package in the full native library listing",
+        "Should provide actionable fix steps: update package, rebuild, file issue",
+        "Aligned packages should show green ✓, misaligned should show red ✗"
+      ]
     }
   ]
 }

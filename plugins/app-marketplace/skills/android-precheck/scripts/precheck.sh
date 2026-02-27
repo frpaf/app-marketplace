@@ -231,63 +231,156 @@ for so_dir in "${SO_DIRS[@]}"; do
     done < <(find "$so_dir" -name "*.so" -type f 2>/dev/null)
 done
 
+# ── Helper: resolve .so path → owning 3rd-party package name ──
+resolve_so_package() {
+    local so_path="$1"
+
+    # node_modules — RN / Expo packages
+    if [[ "$so_path" == node_modules/* ]]; then
+        local rel="${so_path#node_modules/}"
+        if [[ "$rel" == @* ]]; then
+            # scoped package: @scope/name
+            echo "$rel" | cut -d'/' -f1-2
+        else
+            echo "$rel" | cut -d'/' -f1
+        fi
+        return
+    fi
+
+    # Flutter .pub-cache or .dart_tool plugin builds
+    if [[ "$so_path" == *".pub-cache"* ]]; then
+        echo "$so_path" | grep -oP '\.pub-cache/hosted/[^/]+/\K[^-]+' | head -1
+        return
+    fi
+    if [[ "$so_path" == *".dart_tool"* ]] || [[ "$so_path" == *"dart_tool"* ]]; then
+        echo "$so_path" | grep -oP '\.dart_tool/flutter_build/[^/]+/\K[^/]+' | head -1 || \
+        echo "$so_path" | grep -oP 'dart_tool/[^/]+/\K[^/]+' | head -1
+        return
+    fi
+
+    # android/app/build/intermediates — from gradle dependency
+    if [[ "$so_path" == android/app/build/* ]] || [[ "$so_path" == build/* ]]; then
+        # Try to extract library name from the .so filename
+        local libname
+        libname=$(basename "$so_path" .so | sed 's/^lib//')
+        echo "(build) $libname"
+        return
+    fi
+
+    # android/ tree — could be a local JNI or an AAR exploded lib
+    if [[ "$so_path" == android/* ]]; then
+        # Check if inside a subproject (e.g. android/react-native-maps/...)
+        local sub
+        sub=$(echo "$so_path" | sed 's|^android/||' | cut -d'/' -f1)
+        if [ "$sub" != "app" ]; then
+            echo "$sub"
+            return
+        fi
+        # Inside android/app — extract lib name
+        local libname
+        libname=$(basename "$so_path" .so | sed 's/^lib//')
+        echo "(app) $libname"
+        return
+    fi
+
+    # .gradle cache — exploded AARs
+    if [[ "$so_path" == .gradle/* ]]; then
+        local aar_name
+        aar_name=$(echo "$so_path" | grep -oP 'transforms/[^/]+/[^/]+/\K[^/]+' | head -1)
+        [ -n "$aar_name" ] && echo "(gradle) $aar_name" && return
+        local libname
+        libname=$(basename "$so_path" .so | sed 's/^lib//')
+        echo "(gradle) $libname"
+        return
+    fi
+
+    # Fallback: just the .so filename
+    basename "$so_path" .so | sed 's/^lib//'
+}
+
 if [ ${#SO_FILES[@]} -gt 0 ]; then
     echo -e "  ${CYAN}ℹ️${NC}  ${#SO_FILES[@]} native .so file(s) found"
-    # If readelf is available, actually check alignment
+
     if command -v readelf &>/dev/null; then
-        MISALIGNED=()
+        # Associative arrays: package → list of misaligned libs, package → list of aligned libs
+        declare -A MISALIGNED_BY_PKG
+        declare -A ALIGNED_BY_PKG
+        MISALIGNED_COUNT=0
         CHECKED=0
+        MAX_CHECK=100
+
         for so_file in "${SO_FILES[@]}"; do
-            # Only check a reasonable number to avoid long runtimes
-            [ $CHECKED -ge 50 ] && echo -e "     ${CYAN}ℹ️${NC}  (checked 50 of ${#SO_FILES[@]}, skipping rest)" && break
+            [ $CHECKED -ge $MAX_CHECK ] && echo -e "     ${CYAN}ℹ️${NC}  (checked $MAX_CHECK of ${#SO_FILES[@]}, skipping rest)" && break
+
             LOAD_ALIGN=$(readelf -l "$so_file" 2>/dev/null | grep -m1 "LOAD" | awk '{print $NF}')
             if [ -n "$LOAD_ALIGN" ]; then
-                # Convert hex alignment to decimal and check >= 16384 (0x4000)
-                ALIGN_DEC=$((LOAD_ALIGN))
-                if [ "$ALIGN_DEC" -lt 16384 ] 2>/dev/null; then
-                    MISALIGNED+=("$so_file (align=$LOAD_ALIGN)")
+                ALIGN_DEC=$((LOAD_ALIGN)) 2>/dev/null || ALIGN_DEC=0
+                PKG_NAME=$(resolve_so_package "$so_file")
+                [ -z "$PKG_NAME" ] && PKG_NAME="(unknown)"
+                LIB_NAME=$(basename "$so_file")
+
+                if [ "$ALIGN_DEC" -lt 16384 ]; then
+                    MISALIGNED_BY_PKG["$PKG_NAME"]+="$LIB_NAME ($LOAD_ALIGN)|"
+                    ((MISALIGNED_COUNT++))
+                else
+                    ALIGNED_BY_PKG["$PKG_NAME"]+="$LIB_NAME|"
                 fi
             fi
             ((CHECKED++))
         done
-        if [ ${#MISALIGNED[@]} -gt 0 ]; then
-            echo -e "  ${RED}❌ BLOCKER: ${#MISALIGNED[@]} .so file(s) NOT aligned to 16 KB:${NC}"
-            for mf in "${MISALIGNED[@]:0:10}"; do
-                echo -e "     • $mf"
+
+        if [ $MISALIGNED_COUNT -gt 0 ]; then
+            echo -e "  ${RED}❌ BLOCKER: $MISALIGNED_COUNT .so file(s) NOT aligned to 16 KB${NC}"
+            echo ""
+            echo -e "  ${RED}${BOLD}  3rd-Party Packages Causing 16 KB Failures:${NC}"
+            echo -e "  ┌──────────────────────────────────────────────────────────────────┐"
+
+            PKG_COUNT=0
+            for pkg in $(echo "${!MISALIGNED_BY_PKG[@]}" | tr ' ' '\n' | sort); do
+                ((PKG_COUNT++))
+                [ $PKG_COUNT -gt 15 ] && echo -e "  │  ... and more (run with readelf manually)                     │" && break
+                echo -e "  │  ${RED}✗${NC} ${BOLD}$pkg${NC}"
+                IFS='|' read -ra LIBS <<< "${MISALIGNED_BY_PKG[$pkg]}"
+                for lib_entry in "${LIBS[@]}"; do
+                    [ -z "$lib_entry" ] && continue
+                    echo -e "  │      $lib_entry"
+                done
             done
-            [ ${#MISALIGNED[@]} -gt 10 ] && echo "     ... and $((${#MISALIGNED[@]} - 10)) more"
-            echo "     Rebuild these libraries with: -Wl,-z,max-page-size=16384"
-            BLOCKER_MSGS+=("${#MISALIGNED[@]} native .so file(s) not aligned to 16 KB pages"); ((BLOCKERS++))
+            echo -e "  └──────────────────────────────────────────────────────────────────┘"
+            echo ""
+            echo -e "  ${BOLD}How to fix:${NC}"
+            echo "     1. Update each package to its latest version"
+            echo "     2. Rebuild and re-run this check"
+            echo "     3. If still failing, file an issue on the package's GitHub repo"
+            echo "     4. For packages you own: recompile with -Wl,-z,max-page-size=16384"
+            BLOCKER_MSGS+=("$MISALIGNED_COUNT native .so file(s) not 16 KB aligned — from ${#MISALIGNED_BY_PKG[@]} package(s)"); ((BLOCKERS++))
         else
-            echo -e "  ${GREEN}✅${NC} All checked .so files have 16 KB page alignment"; ((PASSED++))
+            echo -e "  ${GREEN}✅${NC} All $CHECKED checked .so files have 16 KB page alignment"; ((PASSED++))
+        fi
+
+        # Always list packages with native libs (aligned or not) for awareness
+        ALL_NATIVE_PKGS=()
+        for pkg in "${!ALIGNED_BY_PKG[@]}" "${!MISALIGNED_BY_PKG[@]}"; do
+            ALL_NATIVE_PKGS+=("$pkg")
+        done
+        if [ ${#ALL_NATIVE_PKGS[@]} -gt 0 ]; then
+            UNIQUE_NATIVE=($(printf '%s\n' "${ALL_NATIVE_PKGS[@]}" | sort -u))
+            echo ""
+            echo -e "  ${CYAN}ℹ️${NC}  All packages with native libraries (${#UNIQUE_NATIVE[@]}):"
+            for pkg in "${UNIQUE_NATIVE[@]:0:20}"; do
+                if [ -n "${MISALIGNED_BY_PKG[$pkg]+x}" ]; then
+                    echo -e "     ${RED}✗${NC} $pkg"
+                else
+                    echo -e "     ${GREEN}✓${NC} $pkg"
+                fi
+            done
+            [ ${#UNIQUE_NATIVE[@]} -gt 20 ] && echo "     ... and $((${#UNIQUE_NATIVE[@]} - 20)) more"
         fi
     else
         echo "     readelf not available — cannot verify alignment automatically"
-        echo "     Install binutils and re-run, or manually check: readelf -l <lib>.so | grep LOAD"
+        echo "     Install binutils: sudo apt install binutils (Linux) or brew install binutils (macOS)"
+        echo "     Then re-run to check: readelf -l <lib>.so | grep LOAD"
         WARNING_MSGS+=("Native .so files found — install readelf to verify 16 KB alignment"); ((WARNINGS++))
-    fi
-
-    # List packages with native libs for awareness
-    SO_PACKAGES=()
-    for so_file in "${SO_FILES[@]}"; do
-        if [[ "$so_file" == node_modules/* ]]; then
-            pkg=$(echo "$so_file" | sed 's|node_modules/||' | cut -d'/' -f1-2 | sed 's|/.*||')
-            [[ "$pkg" == @* ]] && pkg=$(echo "$so_file" | sed 's|node_modules/||' | cut -d'/' -f1-2)
-        elif [[ "$so_file" == *".pub-cache"* ]] || [[ "$so_file" == *"dart_tool"* ]]; then
-            pkg=$(echo "$so_file" | grep -oP '[^/]+(?=/android|/jni|/src)' | head -1)
-        else
-            pkg=$(echo "$so_file" | sed 's|.*/jni/\|.*/lib/||;s|/.*||')
-        fi
-        [ -n "$pkg" ] && SO_PACKAGES+=("$pkg")
-    done
-    # Deduplicate
-    if [ ${#SO_PACKAGES[@]} -gt 0 ]; then
-        UNIQUE_PKGS=($(printf '%s\n' "${SO_PACKAGES[@]}" | sort -u))
-        echo -e "  ${CYAN}ℹ️${NC}  Packages with native libraries:"
-        for pkg in "${UNIQUE_PKGS[@]:0:15}"; do
-            echo "     • $pkg"
-        done
-        [ ${#UNIQUE_PKGS[@]} -gt 15 ] && echo "     ... and $((${#UNIQUE_PKGS[@]} - 15)) more"
     fi
 else
     echo -e "  ${GREEN}✅${NC} No native .so libraries found"; ((PASSED++))
