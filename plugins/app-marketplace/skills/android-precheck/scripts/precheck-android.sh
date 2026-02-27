@@ -338,9 +338,12 @@ if [ ${#SO_FILES[@]} -gt 0 ]; then
     fi
 
     if [ -n "$READELF" ]; then
-        # Associative arrays: package → list of misaligned libs, package → list of aligned libs
-        declare -A MISALIGNED_BY_PKG
-        declare -A ALIGNED_BY_PKG
+        # Use temp files instead of associative arrays (bash 3.x compat)
+        TMPDIR_SO=$(mktemp -d)
+        MISALIGNED_LOG="$TMPDIR_SO/misaligned.log"   # format: PKG_NAME<TAB>LIB_NAME (ALIGN)
+        ALIGNED_LOG="$TMPDIR_SO/aligned.log"         # format: PKG_NAME<TAB>LIB_NAME
+        : > "$MISALIGNED_LOG"
+        : > "$ALIGNED_LOG"
         MISALIGNED_COUNT=0
         CHECKED=0
         MAX_CHECK=500
@@ -356,29 +359,28 @@ if [ ${#SO_FILES[@]} -gt 0 ]; then
                 LIB_NAME=$(basename "$so_file")
 
                 if [ "$ALIGN_DEC" -lt 16384 ]; then
-                    MISALIGNED_BY_PKG["$PKG_NAME"]+="$LIB_NAME ($LOAD_ALIGN)|"
+                    printf '%s\t%s (%s)\n' "$PKG_NAME" "$LIB_NAME" "$LOAD_ALIGN" >> "$MISALIGNED_LOG"
                     ((MISALIGNED_COUNT++))
                 else
-                    ALIGNED_BY_PKG["$PKG_NAME"]+="$LIB_NAME|"
+                    printf '%s\t%s\n' "$PKG_NAME" "$LIB_NAME" >> "$ALIGNED_LOG"
                 fi
             fi
             ((CHECKED++))
         done
 
         if [ $MISALIGNED_COUNT -gt 0 ]; then
+            MISALIGNED_PKG_COUNT=$(cut -f1 "$MISALIGNED_LOG" | sort -u | wc -l | tr -d ' ')
             echo -e "  ${RED}❌ BLOCKER: $MISALIGNED_COUNT .so file(s) NOT aligned to 16 KB${NC}"
             echo ""
             echo -e "  ${RED}${BOLD}  3rd-Party Packages Causing 16 KB Failures:${NC}"
             echo -e "  ┌──────────────────────────────────────────────────────────────────┐"
 
             PKG_COUNT=0
-            for pkg in $(echo "${!MISALIGNED_BY_PKG[@]}" | tr ' ' '\n' | sort); do
-                ((PKG_COUNT++))
+            cut -f1 "$MISALIGNED_LOG" | sort -u | while IFS= read -r pkg; do
+                PKG_COUNT=$((PKG_COUNT + 1))
                 [ $PKG_COUNT -gt 15 ] && echo -e "  │  ... and more (run with readelf manually)                     │" && break
                 echo -e "  │  ${RED}✗${NC} ${BOLD}$pkg${NC}"
-                IFS='|' read -ra LIBS <<< "${MISALIGNED_BY_PKG[$pkg]}"
-                for lib_entry in "${LIBS[@]}"; do
-                    [ -z "$lib_entry" ] && continue
+                grep "^${pkg}	" "$MISALIGNED_LOG" | cut -f2 | while IFS= read -r lib_entry; do
                     echo -e "  │      $lib_entry"
                 done
             done
@@ -389,29 +391,33 @@ if [ ${#SO_FILES[@]} -gt 0 ]; then
             echo "     2. Rebuild and re-run this check"
             echo "     3. If still failing, file an issue on the package's GitHub repo"
             echo "     4. For packages you own: recompile with -Wl,-z,max-page-size=16384"
-            BLOCKER_MSGS+=("$MISALIGNED_COUNT native .so file(s) not 16 KB aligned — from ${#MISALIGNED_BY_PKG[@]} package(s)"); ((BLOCKERS++))
+            BLOCKER_MSGS+=("$MISALIGNED_COUNT native .so file(s) not 16 KB aligned — from $MISALIGNED_PKG_COUNT package(s)"); ((BLOCKERS++))
         else
             echo -e "  ${GREEN}✅${NC} All $CHECKED checked .so files have 16 KB page alignment"; ((PASSED++))
         fi
 
         # Always list packages with native libs (aligned or not) for awareness
-        ALL_NATIVE_PKGS=()
-        for pkg in "${!ALIGNED_BY_PKG[@]}" "${!MISALIGNED_BY_PKG[@]}"; do
-            ALL_NATIVE_PKGS+=("$pkg")
-        done
-        if [ ${#ALL_NATIVE_PKGS[@]} -gt 0 ]; then
-            UNIQUE_NATIVE=($(printf '%s\n' "${ALL_NATIVE_PKGS[@]}" | sort -u))
+        ALL_PKGS_FILE="$TMPDIR_SO/all_pkgs.txt"
+        cut -f1 "$MISALIGNED_LOG" >> "$ALL_PKGS_FILE" 2>/dev/null
+        cut -f1 "$ALIGNED_LOG" >> "$ALL_PKGS_FILE" 2>/dev/null
+        if [ -s "$ALL_PKGS_FILE" ]; then
+            UNIQUE_COUNT=$(sort -u "$ALL_PKGS_FILE" | wc -l | tr -d ' ')
             echo ""
-            echo -e "  ${CYAN}ℹ️${NC}  All packages with native libraries (${#UNIQUE_NATIVE[@]}):"
-            for pkg in "${UNIQUE_NATIVE[@]:0:20}"; do
-                if [ -n "${MISALIGNED_BY_PKG[$pkg]+x}" ]; then
+            echo -e "  ${CYAN}ℹ️${NC}  All packages with native libraries ($UNIQUE_COUNT):"
+            PKG_SHOWN=0
+            sort -u "$ALL_PKGS_FILE" | while IFS= read -r pkg; do
+                PKG_SHOWN=$((PKG_SHOWN + 1))
+                [ $PKG_SHOWN -gt 20 ] && echo "     ... and $((UNIQUE_COUNT - 20)) more" && break
+                if grep -q "^${pkg}	" "$MISALIGNED_LOG" 2>/dev/null; then
                     echo -e "     ${RED}✗${NC} $pkg"
                 else
                     echo -e "     ${GREEN}✓${NC} $pkg"
                 fi
             done
-            [ ${#UNIQUE_NATIVE[@]} -gt 20 ] && echo "     ... and $((${#UNIQUE_NATIVE[@]} - 20)) more"
         fi
+
+        # Cleanup temp files
+        rm -rf "$TMPDIR_SO"
     else
         echo "     readelf/greadelf not available — cannot verify alignment automatically"
         echo "     Install: brew install binutils (macOS) or sudo apt install binutils (Linux)"
