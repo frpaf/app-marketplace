@@ -1,7 +1,7 @@
 ---
 name: android-play-store-precheck
-version: 3.0.0
-description: Pre-submission validation for Flutter and Expo apps before Google Play submission
+version: 4.0.0
+description: Pre-submission validation for Flutter, Expo, and React Native apps before Google Play submission
 triggers:
   - play store
   - google play
@@ -11,11 +11,12 @@ triggers:
   - android rejection
   - flutter deploy android
   - expo submit android
+  - react native play store
 tools:
   - bash
 ---
 
-# Google Play Store Pre-Check for Flutter & Expo
+# Google Play Store Pre-Check for Flutter, Expo & React Native
 
 Automated pre-submission validation to catch common rejection issues **before** you submit to Google Play.
 
@@ -25,7 +26,7 @@ Automated pre-submission validation to catch common rejection issues **before** 
 |-----------|-----------|----------------|
 | **Flutter** | `pubspec.yaml` | `flutter build appbundle` |
 | **Expo** | `app.json` + expo | `npx expo prebuild` → `npx expo run:android` |
-| **React Native** | `package.json` | Native builds |
+| **React Native** | `package.json` + react-native | Native builds |
 
 ## Step 0 — Check & Install Dependencies (run every time)
 
@@ -35,7 +36,7 @@ Before doing anything else, run the automated setup script. It detects the OS, c
 bash scripts/setup.sh
 ```
 
-This checks: Bash and the precheck script (ensures it exists and is executable).
+This checks: Bash, readelf (binutils), and the precheck script (ensures it exists and is executable).
 
 Do NOT proceed until the setup script reports all dependencies are ready.
 
@@ -44,7 +45,9 @@ Do NOT proceed until the setup script reports all dependencies are ready.
 Run from your project root:
 
 ```bash
-./precheck-android.sh
+./precheck-android.sh              # Terminal output (default)
+./precheck-android.sh --json       # JSON output for CI/CD
+./precheck-android.sh --json-pretty # JSON output, formatted
 ```
 
 Or use Claude to analyze your project:
@@ -60,7 +63,24 @@ npx expo prebuild --platform android
 ./precheck-android.sh
 ```
 
-Without prebuild, the script checks `app.json` config only.
+Without prebuild, the script checks `app.json` and `package.json` config — including photo/video plugins (`expo-media-library`, `expo-image-picker`) which are flagged as blockers even without native files.
+
+---
+
+## Issue Categories
+
+Every issue detected by the script includes:
+
+| Field | Description |
+|-------|-------------|
+| **Severity** | `BLOCKER` (must fix) or `WARNING` (review before submission) |
+| **Category** | One of the categories below |
+| **File** | The file where the issue was found |
+| **Match** | The specific line, permission, library, or config causing the issue |
+| **Message** | Human-readable explanation |
+| **Fix** | Actionable recommendation |
+
+Categories: `target-sdk`, `compile-sdk`, `permissions`, `photo-video`, `foreground-service`, `network-security`, `build-config`, `signing`, `billing`, `account-deletion`, `16kb-alignment`, `build-format`, `expo-config`
 
 ---
 
@@ -73,10 +93,13 @@ Without prebuild, the script checks `app.json` config only.
 | targetSdk < 35 | Aug 2025 policy — new apps/updates must target API 35+ | ❌ Blocker |
 | compileSdk < targetSdk | compileSdk must be ≥ targetSdk | ⚠️ Warning |
 | Building APK instead of AAB | Google requires AAB for new apps | ❌ Blocker |
+| Fastlane `--apk` upload | Must use `--aab` for Play Store | ❌ Blocker |
 | Missing signing configuration | Release builds | ⚠️ Warning |
 | key.properties not in .gitignore | Security | ⚠️ Warning |
 | R8/ProGuard not enabled for release | App quality & size | ⚠️ Warning |
+| shrinkResources not enabled | Unused resources in bundle | ⚠️ Warning |
 | Missing `android.config.pageSize=16384` | Required for Android 15+ (16 KB page sizes) since Nov 2025 | ❌ Blocker |
+| Missing `gradle.properties` file entirely | Cannot set 16 KB page size | ❌ Blocker |
 | Native `.so` libraries without 16 KB alignment | Scans `android/`, `node_modules/`, build dirs; uses `readelf` to verify and **traces each failure back to its owning 3rd-party package** | ❌ Blocker |
 
 ### Permissions (AndroidManifest.xml)
@@ -97,11 +120,19 @@ Without prebuild, the script checks `app.json` config only.
 |-------|-------------|----------|
 | `QUERY_ALL_PACKAGES` | Must justify visibility into installed apps | ⚠️ Warning |
 | `ACCESS_FINE_LOCATION` without justification | Consider if `ACCESS_COARSE_LOCATION` is sufficient | ⚠️ Warning |
-| `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO` without core use | Should use Android Photo Picker instead | ⚠️ Warning |
 | `SYSTEM_ALERT_WINDOW` | Draw over other apps — needs justification | ⚠️ Warning |
-| `CAMERA` without core use | Must be essential to app functionality | ⚠️ Warning |
-| `RECORD_AUDIO` without core use | Must be essential to app functionality | ⚠️ Warning |
-| `READ_CONTACTS` without core use | Must be essential — not for data harvesting | ⚠️ Warning |
+
+#### Photo & Video Permissions
+
+| Check | Requirement | Severity |
+|-------|-------------|----------|
+| `READ_MEDIA_IMAGES` in manifest | Requires Photo & Video Permissions declaration in Play Console | ❌ Blocker |
+| `READ_MEDIA_VIDEO` in manifest | Requires Photo & Video Permissions declaration in Play Console | ❌ Blocker |
+| `READ_MEDIA_VISUAL_USER_SELECTED` in manifest | Requires Photo & Video Permissions declaration in Play Console | ❌ Blocker |
+| `image_picker` / `photo_manager` in pubspec.yaml (no android/ dir) | Adds READ_MEDIA_* at build time — requires declaration | ❌ Blocker |
+| `expo-media-library` / `expo-image-picker` in package.json (no android/ dir) | Adds READ_MEDIA_* at build time — requires declaration | ❌ Blocker |
+
+> **Note:** These are blockers because Google will reject apps using READ_MEDIA_* permissions unless the app's core purpose is photo/video management. Use the Android Photo Picker instead (no permission needed).
 
 #### Legacy / Deprecated Permissions
 
@@ -109,16 +140,14 @@ Without prebuild, the script checks `app.json` config only.
 |-------|-------------|----------|
 | `READ_EXTERNAL_STORAGE` without `maxSdkVersion` on API 35 target | Legacy — must migrate to Scoped Storage | ❌ Blocker |
 | `WRITE_EXTERNAL_STORAGE` without `maxSdkVersion` on API 35 target | Legacy — deprecated since API 30 | ❌ Blocker |
-| `READ_EXTERNAL_STORAGE` on API 33+ | Deprecated — use Scoped Storage, MediaStore, or Photo Picker | ⚠️ Warning |
-| `WRITE_EXTERNAL_STORAGE` on API 33+ | Deprecated — use Scoped Storage or SAF | ⚠️ Warning |
-| Unused permissions declared in manifest | Remove any permissions not actively used | ⚠️ Warning |
 
 ### Foreground Services
 
 | Check | Requirement | Severity |
 |-------|-------------|----------|
-| `<service>` without `android:foregroundServiceType` | Required since API 34 — missing = crash or rejection | ❌ Blocker |
-| `foregroundServiceType` uses invalid type | Must be a valid type (see list below) | ❌ Blocker |
+| `<service>` without `android:foregroundServiceType` | Required since API 34 — missing = crash on Android 14+ | ❌ Blocker |
+
+> **Note (v4.0):** The script now correctly handles multi-line `<service>` XML declarations. Previous versions could false-positive on services where `foregroundServiceType` was on a separate line from `<service`.
 
 Valid foreground service types (API 34+):
 - `camera` — Camera access in foreground
@@ -143,20 +172,11 @@ Valid foreground service types (API 34+):
 | `cleartextTrafficPermitted="true"` in network_security_config.xml | Allows plain HTTP traffic — Data Safety mismatch risk | ⚠️ Warning |
 | Missing network_security_config.xml entirely | Should explicitly configure network security | ℹ️ Info |
 
-### Storage Policy
-
-| Check | Requirement | Severity |
-|-------|-------------|----------|
-| `READ_EXTERNAL_STORAGE` without `maxSdkVersion` on API 35 target | Must migrate to Scoped Storage | ❌ Blocker |
-| `WRITE_EXTERNAL_STORAGE` without `maxSdkVersion` on API 35 target | Deprecated since API 30 | ❌ Blocker |
-| No use of MediaStore / SAF / Photo Picker as replacement | Must use modern storage APIs | ⚠️ Warning |
-
 ### In-App Purchases
 
 | Check | Requirement | Severity |
 |-------|-------------|----------|
 | Play Billing Library < v7 | Must use v7+ for new apps/updates | ❌ Blocker |
-| IAP present but no restore mechanism | User must be able to restore purchases | ⚠️ Warning |
 
 ### Account & Privacy
 
@@ -164,27 +184,34 @@ Valid foreground service types (API 34+):
 |-------|-------------|----------|
 | Login exists but no account deletion | Play Policy requires account deletion option | ❌ Blocker |
 | No privacy policy in app | Must link privacy policy in-app and in listing | ⚠️ Warning |
-| No data deletion URL/mechanism discoverable | Play Store requires accessible deletion path | ⚠️ Warning |
+
+> **Note (v4.0):** Login detection now also matches `signInWithCredential`, `signInAnonymously`, `Auth0`, `supabase.*auth`, `useAuth`, and `AuthContext` patterns.
 
 ### SDK Data Safety Audit
 
-| Check | Requirement | Severity |
-|-------|-------------|----------|
-| Firebase Analytics detected | Must declare: Device IDs, App activity, Diagnostics in Data Safety form | ℹ️ Data Safety |
-| Firebase Crashlytics detected | Must declare: Crash logs, Device IDs in Data Safety form | ℹ️ Data Safety |
-| Firebase Cloud Messaging detected | Must declare: Device IDs in Data Safety form | ℹ️ Data Safety |
-| Firebase Auth detected | Must declare: Email, User IDs, Phone number in Data Safety form | ℹ️ Data Safety |
-| Google Maps SDK detected | Must declare: Location data in Data Safety form | ℹ️ Data Safety |
-| Google AdMob detected | Must declare: Device IDs, App interactions in Data Safety form | ℹ️ Data Safety |
-| Sentry / Bugsnag detected | Must declare: Crash logs, Diagnostics, Device IDs in Data Safety form | ℹ️ Data Safety |
-| Facebook SDK detected | Must declare: Device IDs in Data Safety form | ℹ️ Data Safety |
-| OneSignal / Braze detected | Must declare: Device IDs, Personal info in Data Safety form | ℹ️ Data Safety |
-| Microsoft App Center detected | Must declare: Crash logs, Diagnostics in Data Safety form | ℹ️ Data Safety |
-| Amplitude / Mixpanel detected | Must declare: Device IDs, App activity in Data Safety form | ℹ️ Data Safety |
-| Adjust / AppsFlyer detected | Must declare: Device IDs in Data Safety form | ℹ️ Data Safety |
-| RevenueCat detected | Must declare: Purchase history, Device IDs in Data Safety form | ℹ️ Data Safety |
-| Stripe SDK detected | Must declare: User payment info in Data Safety form | ℹ️ Data Safety |
-| Microsoft Intune SDK detected | Must declare: Device IDs, App info in Data Safety form | ℹ️ Data Safety |
+| SDK | Data Types to Declare | Purpose |
+|-----|----------------------|---------|
+| **Firebase Analytics** | Device IDs, App interactions, Diagnostics | Analytics |
+| **Firebase Crashlytics** | Crash logs, Device IDs | Analytics |
+| **Firebase Cloud Messaging** | Device IDs | Communications |
+| **Firebase Auth** | Email, User IDs, Phone number | Account mgmt |
+| **Google Maps SDK** | Location data | App functionality |
+| **Google AdMob** | Device IDs, App interactions | Advertising |
+| **Sentry** | Crash logs, Diagnostics, Device IDs | Analytics |
+| **Bugsnag** | Crash logs, Diagnostics, Device IDs | Analytics |
+| **Microsoft App Center** | Crash logs, Diagnostics | Analytics |
+| **OneSignal** | Device IDs, Personal info | Communications |
+| **Braze** | Device IDs, Personal info | Personalization |
+| **Facebook SDK** | Device IDs | Advertising |
+| **Amplitude** | Device IDs, App interactions | Analytics |
+| **Mixpanel** | Device IDs, App interactions | Analytics |
+| **Adjust** | Device IDs | Advertising |
+| **AppsFlyer** | Device IDs | Advertising |
+| **RevenueCat** | Purchase history, Device IDs | Analytics |
+| **Stripe SDK** | User payment info | App functionality |
+| **Microsoft Intune SDK** | Device IDs, App info | Security |
+
+> **Note (v4.0):** SDK detection now also matches React Native package names (e.g. `@react-native-firebase/analytics`, `@sentry/react-native`, `react-native-purchases`, `@stripe/stripe-react-native`). Each detection shows the source file where the SDK was found.
 
 ---
 
@@ -216,7 +243,8 @@ After running `npx expo prebuild --platform android`, the script checks:
 If no `android/` directory exists, the script checks:
 - `app.json` → `android.package`
 - `app.json` → `android.permissions` — checks for restricted permissions
-- `app.json` → `android.blockedPermissions` — verifies unwanted permissions are blocked
+- `app.json` + `package.json` → `expo-media-library` / `expo-image-picker` — flagged as **BLOCKER** for photo/video permissions
+- `package.json` → SDK dependencies for Data Safety audit
 
 The script will suggest running `npx expo prebuild` for complete checks.
 
@@ -251,14 +279,31 @@ The script will suggest running `npx expo prebuild` for complete checks.
 3. **Release mode crashes** — Always test `flutter build appbundle` not just `flutter run`
 4. **Gradle/AGP version mismatches** — Ensure `android/settings.gradle` uses compatible versions
 5. **ProGuard rules missing** — Some plugins need custom ProGuard rules to avoid R8 stripping
+6. **Photo/video plugins** — `image_picker`, `photo_manager`, `file_picker` may inject `READ_MEDIA_*` permissions; the script flags these as blockers even without `android/` directory
 
 ---
 
 ## Output Format
 
+### Terminal Output (default)
+
+Each issue is displayed inline with severity, file, and the offending value:
+
+```
+  ❌ BLOCKER [android/app/build.gradle] targetSdk 33
+     targetSdk 33 is below the required 35 for new apps and updates (since Aug 2025)
+     Fix: Update targetSdk to 35 in android/app/build.gradle
+
+  ⚠️  WARNING [android/app/build.gradle] minifyEnabled false
+     R8 code shrinking disabled for release — larger APK/AAB size
+     Fix: Set minifyEnabled true in release buildType
+```
+
+### Full Terminal Layout
+
 ```
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║               GOOGLE PLAY STORE PRE-CHECK VALIDATOR v3.0                  ║
+║               GOOGLE PLAY STORE PRE-CHECK VALIDATOR v4.0                  ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
 
 ┌─────────────────────────────────────────────┐
@@ -302,41 +347,31 @@ The script will suggest running `npx expo prebuild` for complete checks.
 ▸ Background Location (Declaration Form required)
 ▸ All Files Access (MANAGE_EXTERNAL_STORAGE — review required)
 ▸ Install Packages (REQUEST_INSTALL_PACKAGES)
-▸ Dangerous Permissions (Camera, Location, Microphone, etc.)
+▸ Dangerous Permissions (Location, QUERY_ALL_PACKAGES, etc.)
+▸ Photo & Video Permissions
 ▸ Legacy Storage Permissions (deprecated API 33+)
-▸ Unused Permission Detection
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃   FOREGROUND SERVICES                                                    ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ▸ Missing foregroundServiceType on <service> tags
-▸ Invalid foregroundServiceType values
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃   NETWORK SECURITY                                                       ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ▸ Cleartext Traffic (must be disabled)
 ▸ Network Security Config (should exist)
-▸ HTTPS Enforcement
-
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃   STORAGE POLICY                                                         ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-▸ Scoped Storage Migration
-▸ Legacy Storage API Usage
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃   IN-APP PURCHASES                                                       ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ▸ Play Billing Library Version (must be v7+)
-▸ Restore Purchases Mechanism
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃   ACCOUNT & PRIVACY                                                      ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ▸ Account Deletion Mechanism
 ▸ Privacy Policy (in-app link)
-▸ Data Deletion URL / Mechanism
 
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃   SDK DATA SAFETY AUDIT                                                  ┃
@@ -354,47 +389,98 @@ The script will suggest running `npx expo prebuild` for complete checks.
 ╔═══════════════════════════════════════════════════════════════════════════╗
 ║                        ANDROID SUMMARY                                    ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
-❌ BLOCKERS / ⚠️ WARNINGS / ✅ PASSED
 
-📊 DATA SAFETY FORM REQUIREMENTS
-┌─────────────────────────────────────────────────────────────┐
-│  Based on detected SDKs, you must declare:                  │
-│  • Device or other IDs (Firebase, push tokens)              │
-│  • Crash logs (Crashlytics)                                 │
-│  • Diagnostics (Analytics)                                  │
-│  • App interactions (Analytics)                             │
-│  • [additional based on detected SDKs]                      │
-└─────────────────────────────────────────────────────────────┘
+❌ BLOCKERS (N):
+   • [category] match (file)
+   • [category] match (file)
 
-📋 PLAY CONSOLE MANUAL CHECKLIST
-□ Data Safety form completed in Play Console
-□ Privacy policy URL added in Play Console
-□ Data deletion URL added in Play Console
-□ Content rating questionnaire completed
-□ Target audience declaration completed
-□ Ads declaration completed
-□ Financial features declaration completed (even if none)
-□ Permissions Declaration Form submitted (if restricted permissions used)
-□ Developer account verified (required 2026)
-□ Screenshots meet requirements (min 2, 9:16, no frames, no transparency)
-□ Store listing complete (title, short description, full description)
+⚠️  WARNINGS (N):
+   • [category] match (file)
+
+✅ PASSED: N checks
+
+📊 DATA SAFETY FORM — declare these in Play Console:
+   • Firebase Analytics → Device IDs, App activity, Diagnostics
+   • Firebase Crashlytics → Crash logs, Device IDs
+
+📋 PLAY CONSOLE MANUAL CHECKLIST:
+   [ ] Data Safety form completed
+   [ ] Privacy policy URL added
+   [ ] Data deletion URL added
+   [ ] Content rating questionnaire
+   [ ] Target audience declaration
+   [ ] Ads + Financial features declarations
+   [ ] Permissions Declaration Form (if restricted perms)
+   [ ] Photo & video: use Android Photo Picker (or declare if core photo app)
+   [ ] Developer account verified (2026)
+   [ ] Screenshots: min 2, 9:16, no frames
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
                               FINAL VERDICT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Build & Config:      X blockers   X warnings   X passed
-  16 KB Page Size:     X blockers   X warnings   X passed
-  Permissions:         X blockers   X warnings   X passed
-  Foreground Svc:      X blockers   X warnings   X passed
-  Network Security:    X blockers   X warnings   X passed
-  Storage Policy:      X blockers   X warnings   X passed
-  In-App Purchases:    X blockers   X warnings   X passed
-  Account & Privacy:   X blockers   X warnings   X passed
-  Data Safety:         X SDKs detected requiring declarations
+  Target SDK:         X blocker(s)   X warning(s)   X passed
+  Build Format:       X blocker(s)   X warning(s)   X passed
+  Build Config:       X blocker(s)   X warning(s)   X passed
+  Signing:            X blocker(s)   X warning(s)   X passed
+  16 KB Page Size:    X blocker(s)   X warning(s)   X passed
+  Permissions:        X blocker(s)   X warning(s)   X passed
+  Photo & Video:      X blocker(s)   X warning(s)   X passed
+  Foreground Svc:     X blocker(s)   X warning(s)   X passed
+  Network Security:   X blocker(s)   X warning(s)   X passed
+  Billing:            X blocker(s)   X warning(s)   X passed
+  Account & Privacy:  X blocker(s)   X warning(s)   X passed
   ─────────────────────────────────────────────────────────
-  TOTAL:               X blockers   X warnings   X passed
+  TOTAL:              X blocker(s)   X warning(s)   X passed   X SDK declarations
 
 🚫 NOT READY / ⚠️ REVIEW WARNINGS / ✅ AUTOMATED CHECKS PASSED
+```
+
+### JSON Output (`--json`)
+
+```json
+{
+  "project": { "name": "my-app", "type": "flutter" },
+  "summary": { "blockers": 3, "warnings": 2, "passed": 10, "data_safety": 2 },
+  "issues": [
+    {
+      "severity": "BLOCKER",
+      "category": "target-sdk",
+      "file": "android/app/build.gradle",
+      "match": "targetSdk 33",
+      "message": "targetSdk 33 is below the required 35 for new apps and updates (since Aug 2025)",
+      "fix": "Update targetSdk to 35 in android/app/build.gradle"
+    }
+  ],
+  "data_safety": [
+    {
+      "sdk": "Firebase Analytics",
+      "file": "pubspec.yaml",
+      "match": "firebase_analytics",
+      "declares": "Device IDs, App activity, Diagnostics",
+      "purpose": "Analytics"
+    }
+  ],
+  "categories": {
+    "target-sdk": { "blockers": 1, "warnings": 0, "passed": 0 },
+    "permissions": { "blockers": 2, "warnings": 0, "passed": 1 }
+  },
+  "verdict": "NOT_READY"
+}
+```
+
+Use `--json` in CI/CD pipelines:
+
+```yaml
+# GitHub Actions example
+- name: Play Store precheck
+  run: |
+    result=$(./precheck-android.sh --json)
+    blockers=$(echo "$result" | jq '.summary.blockers')
+    if [ "$blockers" -gt 0 ]; then
+      echo "::error::$blockers Play Store blocker(s) found"
+      echo "$result" | jq '.issues[] | select(.severity == "BLOCKER")'
+      exit 1
+    fi
 ```
 
 ## Exit Codes
@@ -402,7 +488,7 @@ The script will suggest running `npx expo prebuild` for complete checks.
 | Code | Meaning |
 |------|---------|
 | 0 | All checks passed (or warnings only) |
-| 1 | Blockers found - do not submit |
+| 1 | Blockers found — do not submit |
 
 ---
 
@@ -443,9 +529,25 @@ readelf -l path/to/lib.so | grep LOAD
 # target_link_options(your_lib PRIVATE "-Wl,-z,max-page-size=16384")
 ```
 
-For Flutter apps, update your `android/gradle.properties` — Flutter's Dart code doesn't need changes, but any native plugins may need recompilation.
+The script traces misaligned `.so` files back to their owning package:
 
-For Expo/React Native apps, update `android/gradle.properties` after running prebuild.
+```
+  ❌ BLOCKER [native .so files] react-native-fast-image, @react-native-firebase/app
+     2 package(s) with native .so files not aligned to 16 KB
+     Fix: Update the owning packages, rebuild. For libs you own: recompile with -Wl,-z,max-page-size=16384
+
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  ✗ react-native-fast-image                                     │
+  │      libRNFastImage.so (0x1000)                                │
+  │  ✗ @react-native-firebase/app                                  │
+  │      libfirebase.so (0x1000)                                   │
+  └──────────────────────────────────────────────────────────────────┘
+  All packages with native libraries:
+     ✗ react-native-fast-image
+     ✗ @react-native-firebase/app
+     ✓ react-native-reanimated
+     ✓ hermes-engine
+```
 
 ### Build AAB Instead of APK
 
@@ -528,13 +630,30 @@ final image = await ImagePicker().pickImage(source: ImageSource.gallery);
 final result = await FilePicker.platform.pickFiles();
 ```
 
+### Photo & Video Permissions
+
+```xml
+<!-- BAD — Google will reject unless core photo/video app -->
+<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+<uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+<uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+```
+
+**Remove these permissions** and use the Android Photo Picker instead (no permission needed). Only keep them if your app IS a gallery, photo editor, or file manager — and complete the Photo & Video Permissions declaration in Play Console → App content.
+
+| Framework | Fix |
+|-----------|-----|
+| Flutter | Use `image_picker` v1.0.7+ which defaults to Android Photo Picker |
+| Expo | Use `expo-image-picker` v15+ which defaults to Photo Picker |
+| React Native | Use `react-native-image-picker` v7+ which supports Photo Picker |
+
 ### Foreground Service Type
 
 ```xml
 <!-- BAD — missing type, will crash on API 34+ -->
 <service android:name=".MyService" />
 
-<!-- GOOD — type declared -->
+<!-- GOOD — type declared (can span multiple lines) -->
 <service
     android:name=".LocationTrackingService"
     android:foregroundServiceType="location"
@@ -627,35 +746,6 @@ Add a "Delete Account" option in Settings or Profile screen that:
 
 ---
 
-## SDK Data Safety Mapping Reference
-
-Use this table to fill out your Google Play Data Safety form based on SDKs detected in your project:
-
-| SDK | Data Types to Declare | Purpose |
-|-----|----------------------|---------|
-| **Firebase Analytics** | Device IDs, App interactions, Diagnostics | Analytics |
-| **Firebase Crashlytics** | Crash logs, Device IDs | App functionality, Analytics |
-| **Firebase Cloud Messaging** | Device IDs | App functionality, Developer communications |
-| **Firebase Auth** | Email, User IDs, Phone number | Account management, App functionality |
-| **Firebase Remote Config** | Device IDs | App functionality |
-| **Google Maps SDK** | Approximate/Precise location | App functionality |
-| **Google AdMob** | Device IDs, App interactions | Advertising |
-| **Sentry** | Crash logs, Diagnostics, Device IDs | Analytics, App functionality |
-| **Bugsnag** | Crash logs, Diagnostics, Device IDs | Analytics, App functionality |
-| **Microsoft App Center** | Crash logs, Diagnostics | Analytics |
-| **OneSignal** | Device IDs, Personal info | Developer communications |
-| **Braze** | Device IDs, Personal info, App interactions | Developer communications, Personalization |
-| **Facebook SDK** | Device IDs | Advertising, Analytics |
-| **Amplitude** | Device IDs, App interactions | Analytics |
-| **Mixpanel** | Device IDs, App interactions | Analytics |
-| **Adjust** | Device IDs | Advertising, Analytics |
-| **AppsFlyer** | Device IDs | Advertising, Analytics |
-| **RevenueCat** | Purchase history, Device IDs | App functionality, Analytics |
-| **Stripe SDK** | User payment info | App functionality |
-| **Microsoft Intune SDK** | Device IDs, App info | App functionality, Security |
-
----
-
 ## Play Console Manual Checklist
 
 These items cannot be validated automatically from code and must be completed in the Google Play Console:
@@ -670,9 +760,36 @@ These items cannot be validated automatically from code and must be completed in
 | Ads declaration | App content → Ads | ✅ All apps |
 | Financial features declaration | App content → Financial features | ✅ All apps (even if none) |
 | Permissions Declaration Form | App content → App access | ✅ If restricted permissions |
+| Photo & Video Permissions | App content → Photo and video permissions | ✅ If READ_MEDIA_* used |
 | News & Magazines declaration | App content → News | ✅ If news/magazine app |
 | Store listing | Store presence → Main store listing | ✅ All apps |
 | Developer account verification | Account details | ✅ All apps (enforced 2026) |
+
+---
+
+## Changelog
+
+### v4.0.0
+
+- **Structured issue tracking** — every issue now includes severity, category, file, match, message, and fix
+- **`--json` / `--json-pretty` output** — machine-readable output for CI/CD pipelines
+- **Per-category summary** — final verdict shows blocker/warning/pass counts per category
+- **Multi-line XML parsing** — foreground service detection now handles `<service>` tags spanning multiple lines
+- **Photo/video permissions upgraded to BLOCKER** — `image_picker` in pubspec.yaml and `expo-media-library` in package.json are now blockers (previously warnings)
+- **`.so` package tracing** — misaligned native libraries are grouped by owning package name (npm/pub), not raw file paths
+- **Broader login detection** — now matches `signInWithCredential`, `signInAnonymously`, `Auth0`, Supabase, `useAuth`, `AuthContext`
+- **React Native SDK patterns** — Data Safety audit now matches `@react-native-firebase/*`, `@sentry/react-native`, `@stripe/stripe-react-native`, etc.
+- **Fastlane `--apk` detection** — catches `fastlane supply --apk` in CI configs
+- **File references on every issue** — summary shows `[category] match (file)` for quick navigation
+- **gradle.properties missing** — distinguished from "file exists but missing pageSize" with different messages
+
+### v3.0.0
+
+- Initial release with Flutter, Expo, and React Native support
+- 16 KB page size checks
+- SDK Data Safety audit
+- Foreground service type validation
+- Permissions audit with restricted/dangerous/legacy categories
 
 ---
 
@@ -683,6 +800,7 @@ These items cannot be validated automatically from code and must be completed in
 - [Prepare Your App for Review (Play Console)](https://support.google.com/googleplay/android-developer/answer/9859455)
 - [Target API Level Requirements](https://support.google.com/googleplay/android-developer/answer/11926878)
 - [Permissions and Sensitive APIs Policy](https://support.google.com/googleplay/android-developer/answer/16558241)
+- [Photo & Video Permissions Policy](https://support.google.com/googleplay/android-developer/answer/14115180)
 - [Play Store Screenshot Requirements](https://support.google.com/googleplay/android-developer/answer/9866151)
 - [Google Play SDK Index](https://developer.android.com/distribute/sdk-index)
 - [16 KB Page Size Support](https://developer.android.com/guide/practices/page-sizes)
